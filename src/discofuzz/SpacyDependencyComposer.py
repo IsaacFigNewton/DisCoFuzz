@@ -17,14 +17,36 @@ class SpacyDependencyComposer:
     self.strategy = strategy
     self.fuzzifier = FuzzyFourierTensorTransformer() if fuzzifier is None else fuzzifier
 
-  def _compose_tok_embedding(self, branch: tuple | np.ndarray, root_pos: str = 'n') -> tf.Tensor:
+  def _compose_tok_embedding(self, branch: tuple | tf.Tensor, root_pos: str = 'n', is_root_call: bool = True) -> tf.Tensor:
+
+    # Base case: if branch is a tensor, return it
+    if isinstance(branch, tf.Tensor):
+      return branch
 
     if isinstance(branch, tuple):
-      # get all the childrens'embeddings
+      # Handle empty tuple (no children)
+      if len(branch) == 0:
+        return None
+
+      # get all the childrens' embeddings
       child_embeddings = [
-          self._compose_tok_embedding(e)
+          self._compose_tok_embedding(e, root_pos, False)
           for e in branch
       ]
+
+      # For the root call, the structure is ((lefts), (root,), (rights))
+      # We need to get the root from index 1 before filtering
+      if is_root_call and len(child_embeddings) >= 2:
+        current_tok_tens = child_embeddings[1]
+        # Filter out None values after extracting root
+        child_embeddings = [e for e in child_embeddings if e is not None]
+      else:
+        # Filter out None values
+        child_embeddings = [e for e in child_embeddings if e is not None]
+        # If no valid embeddings, return None
+        if len(child_embeddings) == 0:
+          return None
+        current_tok_tens = child_embeddings[0]
 
       # compose child embeddings based on strategy
       match self.strategy:
@@ -74,7 +96,7 @@ class SpacyDependencyComposer:
             # return the union of these intersected children
             return self.fuzzifier.iterated_union(child_embeddings_intersected)
           # otherwise, just return the union of its children
-          return self.fuzzifier.iterated_union(tf.stack(child_embeddings))
+          return self.fuzzifier.iterated_union(child_embeddings)
 
         case "selective_intersection+intersection+mean":
           # if the current token is a modifier of some kind, intersect it with all its children
@@ -91,17 +113,30 @@ class SpacyDependencyComposer:
         case _:
           raise ValueError(f"Unknown strategy: {self.strategy}")
 
-    # if the token is a leaf
-    else:
-      return current_tok_tens
-
   def __call__(self,
       branch: tuple,
       root_pos: str
   ) -> tf.Tensor:
-      # baseline
+      # Handle invalid input
+      if not isinstance(branch, tuple):
+          raise TypeError(f"Expected branch to be a tuple, got {type(branch).__name__}: {branch}")
+
+      # baseline - extract root token from ((lefts), (root,), (rights)) structure
       if self.strategy is None:
-          root_emb = [e for e in branch if type(e) == np.ndarray]
-          return root_emb[0]
+          def find_tensor(obj):
+              if isinstance(obj, tf.Tensor):
+                  return obj
+              elif isinstance(obj, tuple):
+                  for item in obj:
+                      result = find_tensor(item)
+                      if result is not None:
+                          return result
+              return None
+
+          # The root is in branch[1], which is a tuple containing the root tensor
+          if len(branch) >= 2 and isinstance(branch[1], tuple) and len(branch[1]) > 0:
+              return find_tensor(branch[1])
+          # Fallback: search entire structure
+          return find_tensor(branch)
 
       return self._compose_tok_embedding(branch, root_pos)
