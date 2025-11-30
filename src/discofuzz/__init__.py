@@ -1,3 +1,4 @@
+from .constants import *
 from .FourierPDF import FourierPDF
 from .LemmaVectorizer import LemmaVectorizer
 from .SpacyDependencyComposer import SpacyDependencyComposer

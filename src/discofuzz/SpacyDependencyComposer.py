@@ -1,18 +1,8 @@
 import spacy
 import tensorflow as tf
+from .constants import STRATEGIES
 from .LemmaVectorizer import LemmaVectorizer
 from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
-
-strategies = [
-      None,
-      "mean",
-      "intersection+mean",
-      "intersection+union",
-      "intersection+intersection",
-      "selective_intersection+mean",
-      "selective_intersection+union",
-      "selective_intersection+intersection+mean",
-  ]
 
 class SpacyDependencyComposer:
   def __init__(self,
@@ -21,7 +11,7 @@ class SpacyDependencyComposer:
       lemma_vectorizer=None,
       fuzzifier=None
     ):
-    if strategy not in strategies:
+    if strategy not in STRATEGIES:
       raise ValueError(f"Unknown strategy: {strategy}")
     self.strategy = strategy
     self.nlp = spacy.load("en_core_web_sm") if spacy_model is None else spacy_model
