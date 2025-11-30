@@ -1,5 +1,6 @@
-from typing import Callable, Dict, List, Tuple, Set
 import tensorflow as tf
+import numpy as np
+from ..FourierPDF import FourierPDF
 
 class FuzzyFourierSetMixin(FourierPDF):
   def __init__(self, sigma: float, kernel_size: int):

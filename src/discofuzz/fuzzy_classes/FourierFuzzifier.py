@@ -1,7 +1,8 @@
 import tensorflow as tf
 import numpy as np
-from typing import List, Union
+from typing import Union
 import ot
+from .FuzzyFourierSetMixin import FuzzyFourierSetMixin
 
 class FourierFuzzifier(FuzzyFourierSetMixin):
     """TensorFlow-accelerated version of FourierFuzzifier with set operations"""

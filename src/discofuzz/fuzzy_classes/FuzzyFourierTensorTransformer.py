@@ -1,5 +1,5 @@
-from typing import Callable, Dict, List, Tuple, Set
 import tensorflow as tf
+from .FourierFuzzifier import FourierFuzzifier
 
 class FuzzyFourierTensorTransformer:
     """

@@ -1,6 +1,7 @@
-from typing import Callable, Dict, List, Tuple, Set
 import spacy
 import tensorflow as tf
+from .LemmaVectorizer import LemmaVectorizer
+from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
 
 strategies = [
       None,

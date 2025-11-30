@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discofuzz"
+version = "0.1.0"
+description = "A fuzzy set-theoretic approach to distributional compositional embeddings using SpaCy dependency parses of WordNet glosses"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Isaac Rudnick"}
+]
+keywords = ["nlp", "fuzzy-logic", "embeddings", "compositional-semantics", "wordnet", "spacy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "tensorflow>=2.10.0",
+    "numpy>=1.23.0",
+    "spacy>=3.0.0",
+    "sentence-transformers>=2.0.0",
+    "pot>=0.9.0",  # Python Optimal Transport
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "isort>=5.0.0",
+    "mypy>=0.990",
+    "flake8>=5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/IsaacFigNewton/DisCoFuzz"
+Repository = "https://github.com/IsaacFigNewton/DisCoFuzz"
+Issues = "https://github.com/IsaacFigNewton/DisCoFuzz/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["discofuzz*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

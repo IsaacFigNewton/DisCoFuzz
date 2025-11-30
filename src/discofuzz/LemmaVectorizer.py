@@ -1,4 +1,3 @@
-from typing import Callable, Dict, List, Tuple, Set
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
