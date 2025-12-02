@@ -7,7 +7,7 @@ from .FuzzyFourierSetMixin import FuzzyFourierSetMixin
 class FourierFuzzifier(FuzzyFourierSetMixin):
     """TensorFlow-accelerated version of FourierFuzzifier with set operations"""
 
-    def __init__(self, sigma:float, kernel_size:int, dft_kernel_size:int=64):
+    def __init__(self, sigma:float, kernel_size:int, dft_kernel_size:int=10):
         if kernel_size < 1:
             raise ValueError("Kernel size must be at least 1")
         super().__init__(sigma, kernel_size)

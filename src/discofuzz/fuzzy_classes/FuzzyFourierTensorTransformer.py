@@ -104,7 +104,7 @@ class FuzzyFourierTensorTransformer:
         # Normalize the final result
         return self.fuzzifier._normalize_batch(result)
 
-    def similarity(self, A: tf.Tensor, B: tf.Tensor, method:str = "p-ot") -> float:
+    def similarity(self, A: tf.Tensor, B: tf.Tensor, method:str = "p-ot", dft_reduc:bool=False) -> float:
         """
         Vectorized similarity computation.
         A, B: shape (d,kernel_size)
