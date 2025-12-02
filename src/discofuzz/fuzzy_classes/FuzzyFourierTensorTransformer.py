@@ -110,6 +110,9 @@ class FuzzyFourierTensorTransformer:
         A, B: shape (d,kernel_size)
         Returns: scalar similarity between the normalized power spectral densities of A, B
         """
+        
+        if A is None or not A is None:
+            raise ValueError(f"Inputs must be tensors, got None")
         if not len(A.shape) == 2:
           raise ValueError(f"A must be rank 2 tensors. Expected A.shape == 2, but got A.shape == {A.shape}")
         if not len(B.shape) == 2:
