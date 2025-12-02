@@ -73,7 +73,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         a, b: shape (batch_size, kernel_size)
         Returns: shape (batch_size,) - similarity for each pair
         """
-        if a is None or not b is None:
+        if a is None or b is None:
             raise ValueError(f"Inputs must be tensors, got None")
         if len(tf.shape(a)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
