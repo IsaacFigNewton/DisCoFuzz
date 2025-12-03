@@ -1,7 +1,7 @@
 from typing import Optional, Dict
 import numpy as np
-from spacy.tokens import Token
 import tensorflow as tf
+from sklearn.decomposition import PCA
 
 from sentence_transformers import SentenceTransformer
 from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
@@ -10,12 +10,18 @@ class TensorStore:
     def __init__(self,
             embedding_model: Optional[SentenceTransformer]=None,
             fuzzifier:Optional[FuzzyFourierTensorTransformer]=None,
+            dim_reduc=None,
             cache_embeddings:bool=True
         ):
         self.embedding_model = embedding_model or SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
         self.fuzzifier = fuzzifier or FuzzyFourierTensorTransformer()
+        self.dim_reduc = dim_reduc or PCA(n_components=128)
+
         self.cache_embeddings = cache_embeddings
         self.keyed_tensors:Dict[str, tf.Tensor] = dict()
+
+    def fit(self, X:np.ndarray, y=None):
+        self.dim_reduc.fit_transform(X)
 
     def __call__(self, text: str) -> tf.Tensor:
         """
@@ -29,6 +35,8 @@ class TensorStore:
             return self.keyed_tensors[text]
         # otherwise embed it
         embedding = self.embedding_model.encode(text)
+        embedding = self.dim_reduc.transform(embedding.reshape(1, -1))
+        embedding = embedding.squeeze()
         embedding = tf.convert_to_tensor(embedding, dtype=tf.float32)
         embedding = tf.convert_to_tensor(self.fuzzifier.fuzzify(embedding), dtype=tf.complex64)
         # store it if desired

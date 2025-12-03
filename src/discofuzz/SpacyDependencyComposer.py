@@ -23,9 +23,11 @@ class SpacyDependencyComposer:
       root_pos: Optional[str] = None
     ) -> tf.Tensor | None:
 
-    # Base case: if branch is a tensor, return it
+    # Base case: if branch is a tensor or numpy array, convert to tensor and return
     if isinstance(branch, tf.Tensor):
       return branch
+    if isinstance(branch, np.ndarray):
+      return tf.convert_to_tensor(branch, dtype=tf.complex64)
 
     if isinstance(branch, tuple):
       # get all the childrens' embeddings
@@ -33,6 +35,12 @@ class SpacyDependencyComposer:
           self._compose_tok_embedding(e)
           for e in branch
           if e is not None
+      ]
+      # Filter out None results from recursive calls (e.g., empty branches)
+      child_embeddings = [
+        c
+        for c in child_embeddings
+        if c is not None
       ]
 
       # For the root call, the structure is ((root,), (lefts), (rights))
@@ -46,12 +54,6 @@ class SpacyDependencyComposer:
       # if there're no valid children (like an empty left or right branch)
       else:
         return None
-      
-      child_embeddings = [
-        c
-        for c in child_embeddings
-        if c is not None
-      ]
 
       # compose child embeddings based on strategy
       match self.strategy:
