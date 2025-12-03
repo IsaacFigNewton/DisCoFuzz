@@ -7,11 +7,10 @@ from .FuzzyFourierSetMixin import FuzzyFourierSetMixin
 class FourierFuzzifier(FuzzyFourierSetMixin):
     """TensorFlow-accelerated version of FourierFuzzifier with set operations"""
 
-    def __init__(self, sigma:float, kernel_size:int, dft_kernel_size:int=10):
+    def __init__(self, sigma:float, kernel_size:int):
         if kernel_size < 1:
             raise ValueError("Kernel size must be at least 1")
         super().__init__(sigma, kernel_size)
-        self.dft_kernel_size = dft_kernel_size
 
     def get_npsd_batch(self, a: tf.Tensor) -> tf.Tensor:
         # normalize the power spectral densities
@@ -66,8 +65,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
             a: tf.Tensor,
             b: tf.Tensor,
             method: str,
-            dft_reduc: bool=False
-        ) -> Union[float, np.ndarray]:
+        ) -> np.ndarray:
         """
         Batch computation of pairwise similarities.
         a, b: shape (batch_size, kernel_size)
@@ -80,41 +78,29 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         if len(tf.shape(b)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(b)}")
 
-        flatten_layer = tf.keras.layers.Flatten()
+        match method:
 
-        if method == "npsd-ot":
-
-            if dft_reduc:
-                a = self._get_dft(a)
-                a = flatten_layer(a).numpy()
-                b = self._get_dft(b).numpy()
-                b = flatten_layer(b).numpy()
-                freqs = tf.ones((1, self.dft_kernel_size**2), dtype=tf.float32)
-                u, v = np.meshgrid(freqs, freqs)
-
-                # normalize Wasserstein-2 metric
-                cost = np.exp(np.abs(u - v))
-                # cost = (u - v)**2
-                cost = np.ascontiguousarray(cost, dtype='float64')
-
-                plan = ot.emd(
-                    np.ascontiguousarray(a[i, :]),
-                    np.ascontiguousarray(b[i, :]),
-                    cost,
-                    check_marginals=False
-                )
-                total_cost = np.sum(plan * cost)
+            case "cos":
+                a_npsd = self.get_npsd_batch(a)
+                b_npsd = self.get_npsd_batch(b)
+                # numerator = aggregated hadamard product of a_npsd and b_npsd
+                numerator = tf.reduce_sum(a_npsd * b_npsd)
+                denominator_a = tf.sqrt(tf.reduce_sum(a_npsd * a_npsd))
+                denominator_b = tf.sqrt(tf.reduce_sum(b_npsd * b_npsd))
+                # similarity = correllation coefficient between the two npsd's
+                similarity = numerator / (denominator_a * denominator_b + 1e-10)
+                return similarity.numpy()
             
-            else:
+            case "npsd-ot":
                 # get normalized power density spectra
                 a = self.get_npsd_batch(a).numpy()
                 b = self.get_npsd_batch(b).numpy()
                 freqs = tf.range(0, self.kernel_size, dtype=tf.float32)
-            
                 u, v = np.meshgrid(freqs, freqs)
 
-                # normalize Wasserstein-2 metric
+                # use custom cost metric
                 cost = np.exp(np.abs(u - v))
+                # Wasserstein-2 metric
                 # cost = (u - v)**2
                 cost = np.ascontiguousarray(cost, dtype='float64')
 
@@ -128,20 +114,20 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                     )
                     total_cost += np.sum(plan * cost)
 
-            return 1-np.log1p(np.abs(total_cost / a.shape[0]))
+                return 1-np.log1p(np.abs(total_cost / a.shape[0]))
 
-        elif method == "p-ot":
-            # Wasserstein-1 earthmover's distance of probability distributions
-            #   = integrate(tf.abs(antiderivative(pdf_1) - antiderivative(pdf_2)))
-            # get cdfs of the distributions
-            a_cdf = self._get_cdf_batch(a)
-            b_cdf = self._get_cdf_batch(b)
-            # get the absolute value of their difference
-            diff = tf.cast(tf.abs(a_cdf - b_cdf), dtype=tf.complex64)
-            # integrate their absolute difference
-            abs_diff = tf.abs(self._integrate_batch(diff))
-            # print(abs_diff[:5])
-            return 1-np.log1p(tf.reduce_sum(abs_diff).numpy())
+            case "p-ot":
+                # Wasserstein-1 earthmover's distance of probability distributions
+                #   = integrate(tf.abs(antiderivative(pdf_1) - antiderivative(pdf_2)))
+                # get cdfs of the distributions
+                a_cdf = self._get_cdf_batch(a)
+                b_cdf = self._get_cdf_batch(b)
+                # get the absolute value of their difference
+                diff = tf.cast(tf.abs(a_cdf - b_cdf), dtype=tf.complex64)
+                # integrate their absolute difference
+                abs_diff = tf.abs(self._integrate_batch(diff))
+                # print(abs_diff[:5])
+                return 1-np.log1p(tf.reduce_sum(abs_diff).numpy())
 
-        else:
-            raise ValueError(f"Unknown method: {method}")
+            case _:
+                raise ValueError(f"Unknown method: {method}")

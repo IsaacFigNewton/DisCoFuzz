@@ -1,6 +1,6 @@
 from .constants import *
 from .FourierPDF import FourierPDF
-from .LemmaVectorizer import LemmaVectorizer
+from .TensorStore import TensorStore
 from .SpacyDependencyComposer import SpacyDependencyComposer
 from .fuzzy_classes import (
     FourierFuzzifier,
@@ -10,7 +10,7 @@ from .fuzzy_classes import (
 
 __all__ = [
     "FourierPDF",
-    "LemmaVectorizer",
+    "TensorStore",
     "SpacyDependencyComposer",
     "FourierFuzzifier",
     "FuzzyFourierSetMixin",
