@@ -98,10 +98,11 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 freqs = tf.range(0, self.kernel_size, dtype=tf.float32)
                 u, v = np.meshgrid(freqs, freqs)
 
-                # use custom cost metric
-                cost = np.exp(np.abs(u - v))
+                # custom cost metric does ~0.1% worse than Wasserstein-2 cost metric
+                # cost = np.exp(np.abs(u - v))
+
                 # Wasserstein-2 metric
-                # cost = (u - v)**2
+                cost = (u - v)**2
                 cost = np.ascontiguousarray(cost, dtype='float64')
 
                 total_cost = 0
@@ -113,8 +114,8 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                         check_marginals=False
                     )
                     total_cost += np.sum(plan * cost)
-
-                return 1-np.log1p(np.abs(total_cost / a.shape[0]))
+                
+                return 1-np.log1p(np.abs(total_cost))# / a.shape[0]))
 
             case "p-ot":
                 # Wasserstein-1 earthmover's distance of probability distributions
