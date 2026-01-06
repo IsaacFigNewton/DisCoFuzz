@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from typing import Union
+from scipy.special import expit
 import ot
 from .FuzzyFourierSetMixin import FuzzyFourierSetMixin
 
@@ -114,16 +115,9 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 return 1-np.log1p(np.abs(total_cost))# / a.shape[0]))
 
             case "p-ot":
-                # Wasserstein-1 earthmover's distance of probability distributions
-                #   = integrate(tf.abs(antiderivative(pdf_1) - antiderivative(pdf_2)))
-                # get cdfs of the distributions
-                a_cdf = self._get_cdf_batch(a)
-                b_cdf = self._get_cdf_batch(b)
-                # get the absolute value of their difference
-                diff = tf.cast(tf.abs(a_cdf - b_cdf), dtype=tf.complex64)
-                # integrate their absolute difference
-                abs_diff = tf.abs(self._integrate_batch(diff))
-                # print(abs_diff[:5])
+                # Modified Wasserstein-1 earthmover's distance of probability distributions
+                #   = absolute value of double integral of difference in CDFs
+                abs_diff = tf.abs(self._integrate_batch(self._get_cdf_batch(a - b)))
                 return 1-np.log1p(tf.reduce_sum(abs_diff).numpy())
 
             case _:

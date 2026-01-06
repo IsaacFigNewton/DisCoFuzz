@@ -1,0 +1,5 @@
+	strategy	similarity_metric	model	accuracy	precision	recall	f1_score
+0	sent_emb	cos	sent_emb_cos_sim	0.626	0.526	0.6575	0.5844444444444444
+1	PCA	p-ot	fuzzy_PCA_p-ot_sim	0.622	0.522	0.6525	0.58
+2	PCA	cos	fuzzy_PCA_cos_sim	0.536	0.4357429718875502	0.5425	0.48329621380846327
+3	PCA	npsd-ot	fuzzy_PCA_npsd-ot_sim	0.482	0.382	0.4775	0.42444444444444446
