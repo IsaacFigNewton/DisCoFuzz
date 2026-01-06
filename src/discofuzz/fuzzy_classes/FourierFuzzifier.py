@@ -12,17 +12,30 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
             raise ValueError("Kernel size must be at least 1")
         super().__init__(sigma, kernel_size)
 
-    def get_npsd_batch(self, a: tf.Tensor) -> tf.Tensor:
+    def get_npsd_batch(self, a: tf.Tensor, global_npsd:bool=False) -> tf.Tensor:
         # normalize the power spectral densities
         if len(tf.shape(a)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-        norms = tf.expand_dims(tf.math.reduce_sum(tf.abs(a), axis=1), axis=1)
+        
+        norms = tf.math.reduce_sum(tf.abs(a), axis=1)
+
+        # if we want to normalize against the global power spectral densities
+        #   default is just component-wise power spectra normalization
+        if global_npsd:
+            # aggregate power spectral densities
+            norms = tf.math.reduce_sum(norms, axis=0)
+            # broadcast it to use with 'a'
+            norms = tf.expand_dims(norms, axis=0)
+        
+        norms = tf.expand_dims(norms, axis=1)
+
         norms = tf.broadcast_to(
             norms,
             [tf.shape(a)[0], tf.shape(a)[1]]
         )
         return tf.abs(a) / norms
-
+    
+    
     def similarity(self, a: tf.Tensor, b: tf.Tensor, method: str) -> Union[float, np.ndarray]:
         """
         Compute similarity as ot similarity in frequency domain.
@@ -42,23 +55,6 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
             tf.expand_dims(b, axis=0),
             method=method
         )
-
-
-    def _get_dft(self, a: tf.Tensor) -> tf.Tensor:
-        """
-        gets the first self.dft_kernel_size x self.dft_kernel_size complex coefficients in the DFT of a tensor
-        """
-        if len(tf.shape(a)) != 2:
-            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-        
-        # Cast to complex type if needed and compute DFT along the last dimension
-        a_complex = tf.cast(a, tf.complex64)
-        dft_full = tf.signal.fft(a_complex)
-        
-        # Extract the first dft_kernel_size x dft_kernel_size coefficients
-        dft_slice = dft_full[:, :self.dft_kernel_size, :self.dft_kernel_size]
-
-        return dft_slice
 
 
     def similarity_batch(self,
@@ -81,8 +77,8 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         match method:
 
             case "cos":
-                a_npsd = self.get_npsd_batch(a)
-                b_npsd = self.get_npsd_batch(b)
+                a_npsd = self.get_npsd_batch(a, global_npsd=True)
+                b_npsd = self.get_npsd_batch(b, global_npsd=True)
                 # numerator = aggregated hadamard product of a_npsd and b_npsd
                 numerator = tf.reduce_sum(a_npsd * b_npsd)
                 denominator_a = tf.sqrt(tf.reduce_sum(a_npsd * a_npsd))
@@ -93,8 +89,8 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
             
             case "npsd-ot":
                 # get normalized power density spectra
-                a = self.get_npsd_batch(a).numpy()
-                b = self.get_npsd_batch(b).numpy()
+                a = self.get_npsd_batch(a, global_npsd=True).numpy()
+                b = self.get_npsd_batch(b, global_npsd=True).numpy()
                 freqs = tf.range(0, self.kernel_size, dtype=tf.float32)
                 u, v = np.meshgrid(freqs, freqs)
 
