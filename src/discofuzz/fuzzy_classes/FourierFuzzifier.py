@@ -13,28 +13,28 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
             raise ValueError("Kernel size must be at least 1")
         super().__init__(sigma, kernel_size)
 
-    def get_npsd_batch(self, a: tf.Tensor, global_npsd:bool=False) -> tf.Tensor:
-        # normalize the power spectral densities
-        if len(tf.shape(a)) != 2:
-            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
+    # def get_npsd_batch(self, a: tf.Tensor, global_npsd:bool=False) -> tf.Tensor:
+    #     # normalize the power spectral densities
+    #     if len(tf.shape(a)) != 2:
+    #         raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
         
-        norms = tf.math.reduce_sum(tf.abs(a), axis=1)
+    #     norms = tf.math.reduce_sum(tf.abs(a), axis=1)
 
-        # if we want to normalize against the global power spectral densities
-        #   default is just component-wise power spectra normalization
-        if global_npsd:
-            # aggregate power spectral densities
-            norms = tf.math.reduce_sum(norms, axis=0)
-            # broadcast it to use with 'a'
-            norms = tf.expand_dims(norms, axis=0)
+    #     # if we want to normalize against the global power spectral densities
+    #     #   default is just component-wise power spectra normalization
+    #     if global_npsd:
+    #         # aggregate power spectral densities
+    #         norms = tf.math.reduce_sum(norms, axis=0)
+    #         # broadcast it to use with 'a'
+    #         norms = tf.expand_dims(norms, axis=0)
         
-        norms = tf.expand_dims(norms, axis=1)
+    #     norms = tf.expand_dims(norms, axis=1)
 
-        norms = tf.broadcast_to(
-            norms,
-            [tf.shape(a)[0], tf.shape(a)[1]]
-        )
-        return tf.abs(a) / norms
+    #     norms = tf.broadcast_to(
+    #         norms,
+    #         [tf.shape(a)[0], tf.shape(a)[1]]
+    #     )
+    #     return tf.abs(a) / norms
     
     
     def similarity(self, a: tf.Tensor, b: tf.Tensor, method: str) -> Union[float, np.ndarray]:
@@ -78,20 +78,20 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         match method:
 
             case "cos":
-                a_npsd = self.get_npsd_batch(a, global_npsd=True)
-                b_npsd = self.get_npsd_batch(b, global_npsd=True)
-                # numerator = aggregated hadamard product of a_npsd and b_npsd
-                numerator = tf.reduce_sum(a_npsd * b_npsd)
-                denominator_a = tf.sqrt(tf.reduce_sum(a_npsd * a_npsd))
-                denominator_b = tf.sqrt(tf.reduce_sum(b_npsd * b_npsd))
+                # numerator = aggregated hadamard product of a and b
+                numerator = tf.reduce_sum(a * b)
+                denominator_a = tf.sqrt(tf.reduce_sum(a * a))
+                denominator_b = tf.sqrt(tf.reduce_sum(b * b))
                 # similarity = correllation coefficient between the two npsd's
                 similarity = numerator / (denominator_a * denominator_b + 1e-10)
-                return similarity.numpy()
+                return 1 - similarity.numpy()
             
             case "npsd-ot":
                 # get normalized power density spectra
-                a = self.get_npsd_batch(a, global_npsd=True).numpy()
-                b = self.get_npsd_batch(b, global_npsd=True).numpy()
+                # a = self.get_npsd_batch(a, global_npsd=True).numpy()
+                # b = self.get_npsd_batch(b, global_npsd=True).numpy()
+                a = a.numpy()
+                b = b.numpy()
                 freqs = tf.range(0, self.kernel_size, dtype=tf.float32)
                 u, v = np.meshgrid(freqs, freqs)
 
@@ -112,7 +112,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                     )
                     total_cost += np.sum(plan * cost)
                 
-                return 1-np.log1p(np.abs(total_cost))# / a.shape[0]))
+                return 1-np.abs(total_cost)# / a.shape[0]))
 
             case "p-ot":
                 # Modified Wasserstein-1 earthmover's distance of probability distributions

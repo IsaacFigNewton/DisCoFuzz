@@ -211,3 +211,5 @@ __marimo__/
 .claude/settings.local.json
 full_train_sims_kernel=16_n_components=128_npsd-ot-noavg.tsv
 full_train_eval_kernel=16_n_components=128_npsd-ot-noavg.tsv
+full_train_eval_kernel=16_n_components=128_npsd-ot-noavg.tsv
+full_train_sims_kernel=16_n_components=128_npsd-ot-noavg.tsv
