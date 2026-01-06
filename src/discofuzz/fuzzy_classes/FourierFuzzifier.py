@@ -116,7 +116,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
 
             case "p-ot":
                 # Modified Wasserstein-1 earthmover's distance of probability distributions
-                #   = absolute value of double integral of difference in CDFs
+                #   = sum of absolute values of integrals of differences in components' CDFs
                 abs_diff = tf.abs(self._integrate_batch(self._get_cdf_batch(a - b)))
                 return 1-np.log1p(tf.reduce_sum(abs_diff).numpy())
 
