@@ -1,3 +1,4 @@
+from typing import Tuple
 import tensorflow as tf
 
 class FourierPDF:
@@ -8,13 +9,38 @@ class FourierPDF:
             tf.range(0, kernel_size),
             tf.complex64
         )
-        # pre-computer partial divisor for faster integration
+        # pre-compute partial divisor for faster integration
         #   shape=(, self.kernel_size)
         # add 1e-20 to avoid division by 0
         self.divisor = tf.expand_dims(
             self.k_values+1e-20,
             axis=0
         )
+
+    def _get_DC_AC_divisor_batch(self, a:tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        batch_size = tf.shape(a)[0]
+
+        # Create indices for the k=0 term for each item in the batch
+        row_indices = tf.range(batch_size)
+        col_indices = tf.zeros(batch_size, dtype=tf.int32)
+        indices = tf.stack([row_indices, col_indices], axis=1)
+
+        # get DC/constant terms (first column)
+        DC = a[:, 0]
+        # get AC term (just set first column to 0s)
+        AC = tf.tensor_scatter_nd_update(
+            a,
+            indices,
+            tf.zeros(batch_size, dtype=tf.complex64)
+        )
+        
+        # get divisors
+        harmonics = tf.broadcast_to(
+            self.divisor,
+            tf.shape(a),
+        )
+
+        return DC, AC, harmonics, indices
 
     def _get_cdf_batch(self, a: tf.Tensor) -> tf.Tensor:
         """
@@ -27,22 +53,8 @@ class FourierPDF:
         if a.dtype != tf.complex64:
             raise ValueError(f"Input tensors must be complex64, received {a.dtype}")
 
-        batch_size = tf.shape(a)[0]
-        # Create indices for the k=0 term for each item in the batch
-        indices = tf.stack([tf.range(batch_size), tf.zeros(batch_size, dtype=tf.int32)], axis=1)
-
-        # get AC term (just set all k=0 values to 0)
-        AC = tf.tensor_scatter_nd_update(
-            a,
-            indices,
-            tf.zeros(batch_size, dtype=tf.complex64)
-        )
-        # get divisors
-        divisor = tf.broadcast_to(
-            self.divisor,
-            [tf.shape(a)[0], self.kernel_size]
-        )
-        AC = AC / divisor
+        DC, AC, harmonics, indices = self._get_DC_AC_divisor_batch(a)
+        AC = AC / harmonics
 
         # add the k=0 terms back in
         return tf.tensor_scatter_nd_update(
@@ -62,34 +74,14 @@ class FourierPDF:
         if a.dtype != tf.complex64:
             raise ValueError(f"Input tensors must be complex64, received {a.dtype}")
 
-        batch_size = tf.shape(a)[0]
+        DC, AC, harmonics, _ = self._get_DC_AC_divisor_batch(a)
 
-        # Create indices for the k=0 term for each item in the batch
-        row_indices = tf.range(batch_size)
-        col_indices = tf.zeros(batch_size, dtype=tf.int32)
-        indices = tf.stack([row_indices, col_indices], axis=1)
-
-        # get DC/constant terms (first column)
-        DC = a[:, 0]
-        # get AC term (just set first column to 0s)
-        AC = tf.tensor_scatter_nd_update(
-            a,
-            indices,
-            tf.zeros(batch_size, dtype=tf.complex64)
-        )
-        
-        # get divisors
-        divisor = tf.broadcast_to(
-            self.divisor,
-            tf.shape(a),
-        )
-
-        upper_bound = tf.exp(divisor * ub)
-        lower_bound = tf.exp(divisor * lb)
+        upper_bound = tf.exp(harmonics * ub)
+        lower_bound = tf.exp(harmonics * lb)
         diff = upper_bound - lower_bound
 
         integrals_k_nonzero = tf.reduce_sum(
-            (AC / divisor) * diff,
+            (AC / harmonics) * diff,
             axis=1
         )
 

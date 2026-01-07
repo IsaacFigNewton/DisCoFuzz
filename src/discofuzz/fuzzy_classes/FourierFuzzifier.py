@@ -1,8 +1,10 @@
 import tensorflow as tf
 import numpy as np
+from enum import Enum
 from typing import Union
 from scipy.special import expit
 import ot
+from ..constants import SIMILARITY_METRICS
 from .FuzzyFourierSetMixin import FuzzyFourierSetMixin
 
 class FourierFuzzifier(FuzzyFourierSetMixin):
@@ -77,7 +79,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
 
         match method:
 
-            case "cos":
+            case SIMILARITY_METRICS.COS:
                 # numerator = aggregated hadamard product of a and b
                 numerator = tf.reduce_sum(a * b)
                 denominator_a = tf.sqrt(tf.reduce_sum(a * a))
@@ -86,7 +88,14 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 similarity = numerator / (denominator_a * denominator_b + 1e-10)
                 return 1 - similarity.numpy()
             
-            case "npsd-ot":
+            case SIMILARITY_METRICS.W1:
+                # Modified Wasserstein-1 earthmover's distance of probability distributions
+                #   = sum of absolute values of integrals of differences in components' CDFs
+                psi = self._get_cdf_batch(a - b)
+                abs_diff = tf.abs(self._integrate_batch(psi))
+                return 1-np.log1p(tf.reduce_sum(abs_diff).numpy())
+            
+            case SIMILARITY_METRICS.W2:
                 # get normalized power density spectra
                 # a = self.get_npsd_batch(a, global_npsd=True).numpy()
                 # b = self.get_npsd_batch(b, global_npsd=True).numpy()
@@ -113,12 +122,13 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                     total_cost += np.sum(plan * cost)
                 
                 return 1-np.abs(total_cost)# / a.shape[0]))
-
-            case "p-ot":
-                # Modified Wasserstein-1 earthmover's distance of probability distributions
-                #   = sum of absolute values of integrals of differences in components' CDFs
-                abs_diff = tf.abs(self._integrate_batch(self._get_cdf_batch(a - b)))
-                return 1-np.log1p(tf.reduce_sum(abs_diff).numpy())
+            
+            case SIMILARITY_METRICS.Q:
+                psi = self._get_cdf_batch(a - b)
+                # Get the PDF associated with the wave function described by psi
+                #   p(x) = integral(0, 1, |psi|^2)
+                p_x = self._integrate_batch(tf.cast(tf.abs(psi)*tf.abs(psi), dtype=tf.complex64))
+                return 1-np.log1p(tf.reduce_sum(tf.abs(p_x)).numpy())
 
             case _:
                 raise ValueError(f"Unknown method: {method}")
