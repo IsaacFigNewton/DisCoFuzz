@@ -1,6 +1,6 @@
 	strategy	similarity_metric	model	accuracy	precision	recall	f1_score
 0	sent_emb	cos	sent_emb_cos_sim	0.626	0.526	0.6575	0.5844444444444444
-1	PCA	wasserstein-1	fuzzy_PCA_wasserstein-1_sim	0.62	0.52	0.65	0.5777777777777777
-2	PCA	cos	fuzzy_PCA_cos_sim	0.598	0.498	0.6225	0.5533333333333333
-3	PCA	wasserstein-2	fuzzy_PCA_wasserstein-2_sim	0.512	0.412	0.515	0.4577777777777778
-4	PCA	quantum	fuzzy_PCA_quantum_sim	0.641	0.8360655737704918	0.1275	0.22125813449023862
+1	PCA	quantum	fuzzy_PCA_quantum_sim	0.62	0.52	0.65	0.5777777777777777
+2	PCA	wasserstein-1	fuzzy_PCA_wasserstein-1_sim	0.61	0.51	0.6375	0.5666666666666667
+3	PCA	cos	fuzzy_PCA_cos_sim	0.586	0.486	0.6075	0.54
+4	PCA	wasserstein-2	fuzzy_PCA_wasserstein-2_sim	0.522	0.422	0.5275	0.4688888888888889

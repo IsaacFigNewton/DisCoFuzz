@@ -128,7 +128,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 # Get the PDF associated with the wave function described by psi
                 #   p(x) = integral(0, 1, |psi|^2)
                 p_x = self._integrate_batch(tf.cast(tf.abs(psi)*tf.abs(psi), dtype=tf.complex64))
-                return 1-np.log1p(tf.reduce_sum(tf.abs(p_x)).numpy())
+                return 1-tf.reduce_sum(tf.abs(p_x)).numpy()
 
             case _:
                 raise ValueError(f"Unknown method: {method}")
