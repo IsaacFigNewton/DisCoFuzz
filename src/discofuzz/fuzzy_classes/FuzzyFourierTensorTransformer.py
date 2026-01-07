@@ -105,7 +105,7 @@ class FuzzyFourierTensorTransformer:
     def similarity(self,
             A: tf.Tensor,
             B: tf.Tensor,
-            method:str = "p-ot"
+            method: str
         ) -> float:
         """
         Vectorized similarity computation.
