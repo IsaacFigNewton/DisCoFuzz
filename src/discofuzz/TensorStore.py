@@ -59,7 +59,7 @@ class TensorStore:
         # embed each wordnet synset as the union of its lemmas' tensors
         print("Getting fuzzy tensor embedding for all the wordnet synsets...")
         for synset in wn.all_eng_synsets():
-            s_name = synset.name()
+            s_name = synset.name().split(".")[0]
             s_lemmas = [str(l.name()) for l in synset.lemmas()]
 
             # # set lemma tensor to union of lemma embeddings
