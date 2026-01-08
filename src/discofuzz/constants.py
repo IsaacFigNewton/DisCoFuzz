@@ -2,13 +2,13 @@ from enum import Enum
 
 STRATEGIES = [
     None,
-    "mean",
+    # "mean",
     "intersection+mean",
-    "intersection+union",
-    "intersection+intersection",
-    "selective_intersection+mean",
-    "selective_intersection+union",
-    "selective_intersection+intersection+mean",
+    # "intersection+union",
+    # "intersection+intersection",
+    # "selective_intersection+mean",
+    # "selective_intersection+union",
+    # "selective_intersection+intersection+mean",
 ]
 
 class SIMILARITY_METRICS(Enum):
