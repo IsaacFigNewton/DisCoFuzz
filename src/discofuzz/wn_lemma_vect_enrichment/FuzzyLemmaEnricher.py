@@ -109,18 +109,20 @@ class FuzzyLemmaEnricher:
         # map lemma+POS tag to list of synset tensors
         lemma_pos_tens_map = {
             l: {
-                # get the mean of all noun synsets' tensors
+                # get the mean of all noun synsets' tensors,
+                #   use the lemma's base (unenriched) tensor as a fallback
                 "n": tf.reduce_mean(tf.convert_to_tensor([
                     t
                     for s, t in lem_dict.items()
                     if ".n." in s
-                ]), axis=0),
-                # get the mean of all verb synsets' tensors
+                ]), axis=0) or lemma_tens[l],
+                # get the mean of all verb synsets' tensors,
+                #   use the lemma's base (unenriched) tensor as a fallback
                 "v": tf.reduce_mean(tf.convert_to_tensor([
                     t
                     for s, t in lem_dict.items()
                     if ".v." in s
-                ]), axis=0)
+                ]), axis=0) or lemma_tens[l]
             }
             for l, lem_dict in lemma_syn_tens_map.items()
         }
