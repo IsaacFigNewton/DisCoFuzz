@@ -42,16 +42,26 @@ class FuzzyLemmaEnricher:
 
 
     def _get_all_synset_tensors(self,
+                                lemma_tens: Dict[str, tf.Tensor],
                                 strategy=LEMMA_ENRICHMENT_STRATEGIES[0]
                             ) -> Dict[str, tf.Tensor]:
         match strategy:
             # embed each lemma as the union of the intersection of its synsets' hyper and hyponyms' fuzzy lemma tensors
-            case LEMMA_ENRICHMENT_STRATEGIES[0]:
+            case "union-of-hyper-hypo-intersections":
                 # get all synsets' hypernyms' and hyponyms' cleaned names
+                #   and validate relations to be checked in the lemma tensor store
                 synset_info = {
                     synset.name(): {
-                        "hypernyms": [self._clean_syn_name(h) for h in synset.hypernyms()],
-                        "hyponyms": [self._clean_syn_name(h) for h in synset.hypernyms()],
+                        "hypernyms": [
+                            self._clean_syn_name(h)
+                            for h in synset.hypernyms()
+                            if self._clean_syn_name(h) in lemma_tens
+                        ],
+                        "hyponyms": [
+                            self._clean_syn_name(h)
+                            for h in synset.hyponyms()
+                            if self._clean_syn_name(h) in lemma_tens
+                        ],
                     }
                     for synset in wn.all_eng_synsets()
                     if synset is not None
@@ -61,31 +71,31 @@ class FuzzyLemmaEnricher:
                 synset_info = {
                     s: {
                         # intersect the fuzzy sets for all a synset's hypernyms
-                        "hypernyms": self.fuzzifier.iterated_intersection([
-                            self.keyed_tensors[l]
-                            for l in syn_dict["hypernyms"]
-                            if l in self.keyed_tensors
-                        ]),
+                        "hypernyms": self.fuzzifier.iterated_intersection(syn_dict["hypernyms"]) if len(syn_dict["hypernyms"]) > 0 else None,
                         # union the fuzzy sets for all a synset's hyponyms
-                        "hyponyms": self.fuzzifier.iterated_union([
-                            self.keyed_tensors[l]
-                            for l in syn_dict["hyponyms"]
-                            if l in self.keyed_tensors
-                        ])
+                        "hyponyms": self.fuzzifier.iterated_union(syn_dict["hyponyms"]) if len(syn_dict["hyponyms"]) > 0 else None
                     }
                     for s, syn_dict in synset_info.items()
                 }
 
                 # intersect the intersection of the hypernyms' sets with the union of the hyponyms' sets
-                synset_tensors = {
-                    s: self.fuzzifier.intersection(
-                        syn_dict["hypernyms"],
-                        syn_dict["hyponyms"]
-                    )
-                    for s, syn_dict in synset_info.items()
-                }
+                synset_tensors = dict()
+                for s, syn_dict in synset_info.items():
+                    if syn_dict["hypernyms"] and syn_dict["hyponyms"]:
+                        synset_tensors[s] = self.fuzzifier.intersection(
+                            syn_dict["hypernyms"],
+                            syn_dict["hyponyms"]
+                        )
+                    if syn_dict["hypernyms"]:
+                        synset_tensors[s] = syn_dict["hypernyms"]
+                    if syn_dict["hyponyms"]:
+                        synset_tensors[s] = syn_dict["hyponyms"]
                 
-                return {s: t for s, t in synset_tensors.items() if t is not None}
+                return {
+                    s: t
+                    for s, t in synset_tensors.items()
+                    if t is not None
+                }
             
             case _:
                 raise ValueError(f"Invalid strategy provided: {strategy}.\nExpected one of {LEMMA_ENRICHMENT_STRATEGIES}")
@@ -100,7 +110,7 @@ class FuzzyLemmaEnricher:
         # map lemmas to dicts of synsets and their associated embeddings
         lemma_syn_tens_map = {
             l: {
-                s: synset_tens[s.name()]
+                s.name(): synset_tens[s.name()]
                 for s in wn.synsets(l)
                 if s is not None
             }
@@ -154,7 +164,10 @@ class FuzzyLemmaEnricher:
             lemma_tensors[lemma] = self._fuzzify_dim_reduced_vect(vect)
 
         print("Getting fuzzy tensor embeddings for all the wordnet synsets...")
-        synset_tensors = self._get_all_synset_tensors(strategy=strategy)
+        synset_tensors = self._get_all_synset_tensors(
+            lemma_tens=lemma_tensors,
+            strategy=strategy
+        )
         
         self.keyed_tensors = self._enrich_tensor_store(
             lemma_tens=lemma_tensors,
