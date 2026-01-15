@@ -2,8 +2,8 @@ from typing import Optional
 import numpy as np
 import spacy
 import tensorflow as tf
-from .constants import STRATEGIES
-from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
+from ..constants import STRATEGIES
+from ..fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
 
 class SpacyDependencyComposer:
   modifiers = {"v", "a"}

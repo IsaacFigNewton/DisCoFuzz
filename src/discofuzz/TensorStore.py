@@ -62,11 +62,6 @@ class TensorStore:
             s_name = synset.name().split(".")[0]
             s_lemmas = [str(l.name()) for l in synset.lemmas()]
 
-            # # set lemma tensor to union of lemma embeddings
-            # self.keyed_tensors[s_name] = self.fuzzifier.iterated_union([
-            #     lemma_tensors[l]
-            #     for l in s_lemmas
-            # ])
             # set lemma tensor to mean of lemma embeddings
             s_lemma_tens = [
                 lemma_tensors[l]
