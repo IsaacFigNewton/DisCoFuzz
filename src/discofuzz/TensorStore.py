@@ -4,12 +4,14 @@ import tensorflow as tf
 from sklearn.decomposition import PCA
 import nltk
 import pandas as pd
+from spacy.tokens import Token
 
 nltk.download("wordnet")
 from nltk.corpus import wordnet as wn
 
 from sentence_transformers import SentenceTransformer
 from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
+from .wn_lemma_vect_enrichment.FuzzyLemmaEnricher import FuzzyLemmaEnricher
 
 class TensorStore:
     def __init__(self,
@@ -25,11 +27,16 @@ class TensorStore:
         self.fitted = False
         
         self.cache_embeddings = cache_embeddings
-        self.keyed_tensors:Dict[str, tf.Tensor] = dict()
-        
-        if wn_lemma_defaults:
-            self._init_wordnet_embeddings()
+        self.keyed_tensors:Dict[str, Dict[str, tf.Tensor]] = dict()
 
+        self.lemma_enricher = None
+        if wn_lemma_defaults:
+            self.lemma_enricher = FuzzyLemmaEnricher(
+                embedding_model=self.embedding_model,
+                fuzzifier=self.fuzzifier,
+                dim_reduc=self.dim_reduc,
+            )
+            self.keyed_tensors = self.lemma_enricher.get_lemma_embeddings()
 
     def _fuzzify_dim_reduced_vect(self, vect: np.ndarray):
         embedding = vect.squeeze()
@@ -41,36 +48,6 @@ class TensorStore:
         embedding = self.dim_reduc.transform(embedding.reshape(1, -1))
         return self._fuzzify_dim_reduced_vect(embedding)
 
-    def _init_wordnet_embeddings(self):
-        print("Initializing TensorStore instance with wordnet lemma embeddings as defaults...")
-        print("Embedding all the wordnet lemmas...")
-        lemma_vects = self.embedding_model.encode(list(wn.all_lemma_names()))
-        # fit and reduce lemma vects
-        print("Performing dimensionality reduction on all the wordnet lemmas...")
-        lemma_vects_reduced = self.dim_reduc.fit_transform(lemma_vects)
-        self.fitted = True
-        
-        # store the fuzzified, dimensionality-reduced lemma embeddings to lemma_tensors
-        print("Fuzzifying all the dimensionality-reduced wordnet lemmas...")
-        lemma_tensors = dict()
-        for lemma, vect in zip(wn.all_lemma_names(), lemma_vects_reduced):
-            lemma_tensors[lemma] = self._fuzzify_dim_reduced_vect(vect)
-        
-        # embed each wordnet synset as the union of its lemmas' tensors
-        print("Getting fuzzy tensor embedding for all the wordnet synsets...")
-        for synset in wn.all_eng_synsets():
-            s_name = synset.name().split(".")[0]
-            s_lemmas = [str(l.name()) for l in synset.lemmas()]
-
-            # set lemma tensor to mean of lemma embeddings
-            s_lemma_tens = [
-                lemma_tensors[l]
-                for l in s_lemmas
-                if l in lemma_tensors
-            ]
-            if len(s_lemma_tens) > 0:
-                self.keyed_tensors[s_name] = self.fuzzifier.iterated_union(s_lemma_tens)
-
 
     def fit(self, X:np.ndarray, y=None):
         if not self.fitted:
@@ -80,7 +57,7 @@ class TensorStore:
             raise Exception("Cannot re-fit the dimensionality reduction model that has already been fit.")
 
 
-    def __call__(self, text: str) -> tf.Tensor:
+    def __call__(self, tok: Token) -> tf.Tensor:
         """
         take a string,
         embed it,
@@ -91,12 +68,12 @@ class TensorStore:
             raise Exception("TensorStore.dim_reduc must be fit prior to calling.")
 
         # if there's a cached embedding for the input text
-        if self.keyed_tensors.get(text) is not None:
-            return self.keyed_tensors[text]
+        if self.keyed_tensors.get(tok.text) is not None:
+            return self.keyed_tensors[tok.text][tok.pos_]
         # otherwise embed it
-        embedding = self._embed_text(text)
+        embedding = self._embed_text(tok.text)
         # store it if desired
         if self.cache_embeddings:
-            self.keyed_tensors[text] = embedding
+            self.keyed_tensors[tok.text][tok.pos_] = embedding
         # return embedding
         return embedding

@@ -1,4 +1,6 @@
 import tensorflow as tf
+from spacy.tokens import Doc, Token
+import json
 
 from ..TensorStore import TensorStore
 
@@ -7,14 +9,10 @@ class DepTreeBuilder:
         self.spacy_model = spacy_model
         self.lemma_vectorizer = lemma_vectorizer
 
-    def extract_branch(self, row, i:int):
-        # build out branch
-        doc = self.spacy_model(row[f"sent_{i}"])
-        tok = doc[row[f"tok_idx_{i}"]]
-
-        tok_lefts = [str(t.lemma_) for t in tok.lefts]
-        tok_rights = [str(t.lemma_) for t in tok.rights if not t.is_punct]
-        branch = [str(tok.lemma_)]
+    def _build_branch(self, tok: Token):
+        tok_lefts = [json.dumps(vars(t)) for t in tok.lefts]
+        tok_rights = [json.dumps(vars(t)) for t in tok.rights if not t.is_punct]
+        branch = [json.dumps(vars(tok))]
         if len(tok_lefts) > 0:
             branch.append(tuple(tok_lefts))
         if len(tok_rights) > 0:
@@ -28,6 +26,18 @@ class DepTreeBuilder:
 
         # store in dataframe
         return branch
+
+    def extract_branch(self, row, i:int):
+        # build out branch
+        doc = self.spacy_model(row[f"sent_{i}"])
+        tok = doc[row[f"tok_idx_{i}"]]
+        return self._build_branch(tok)
+    
+    def extract_tree(self, row, i:int):
+        # build out branch
+        doc = self.spacy_model(row[f"sent_{i}"])
+        tok = doc.sents[0].root
+        return self._build_branch(tok)
     
     def get_branch_tuple_embedding(self,
         branch: tuple|str
@@ -38,4 +48,5 @@ class DepTreeBuilder:
                 for child in branch
             ])
         elif isinstance(branch, str):
-            return self.lemma_vectorizer(branch).numpy()
+            tok = Token(**json.loads(branch))
+            return self.lemma_vectorizer(tok).numpy()
