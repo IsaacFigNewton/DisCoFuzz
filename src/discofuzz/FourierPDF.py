@@ -18,6 +18,16 @@ class FourierPDF:
         )
 
     def _get_DC_AC_divisor_batch(self, a:tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        """
+        Docstring for _get_DC_AC_divisor_batch
+        
+        :param self: Description
+        :param a: Description
+        :type a: tf.Tensor
+        :return: Description
+        :rtype: Tuple[Tensor, Tensor, Tensor, Tensor]
+        """
+        
         batch_size = tf.shape(a)[0]
 
         # Create indices for the k=0 term for each item in the batch
@@ -46,7 +56,7 @@ class FourierPDF:
         """
         Batch integration.
         a: shape (batch_size, kernel_size)
-        Returns: shape (batch_size,)
+        Returns: shape (batch_size, kernel_size)
         """
         if len(tf.shape(a)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")

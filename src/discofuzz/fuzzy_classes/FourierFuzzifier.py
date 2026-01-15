@@ -38,6 +38,23 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
     #     )
     #     return tf.abs(a) / norms
     
+
+    def get_p_wasserstein_distance_batch(self, a: tf.Tensor, b: tf.Tensor, p: int) -> float:
+        a_cdf = self._get_cdf_batch(a)
+        b_cdf = self._get_cdf_batch(b)
+        
+        # calculate inverse cdf of each tensor column,
+        #   such that a_cdf(a_cdf_inv(x)) = 1
+        # these calculations are considered so trivial
+        #   that I leave them to whoever reads this code to solve
+        a_inv_cdf = tf.zeros_like(a)
+        b_inv_cdf = tf.zeros_like(b)
+        abs_inv_cdf_diff = tf.abs(a_inv_cdf - b_inv_cdf)
+        
+        # see https://en.wikipedia.org/wiki/Wasserstein_metric for full definition of Wp metric
+        return self._integrate_batch(abs_inv_cdf_diff**p)**(1.0/p)
+
+
     
     def similarity(self, a: tf.Tensor, b: tf.Tensor, method: str) -> Union[float, np.ndarray]:
         """
@@ -91,21 +108,22 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
             case SIMILARITY_METRICS.W1:
                 # Modified Wasserstein-1 earthmover's distance of probability distributions
                 #   = sum of absolute values of integrals of differences in components' CDFs
+                #   = sum of magnitudes of W1 EMDs
                 psi = self._get_cdf_batch(a - b)
                 abs_diff = tf.abs(self._integrate_batch(psi))
-                return 1-np.log1p(tf.reduce_sum(abs_diff).numpy())
+                w1_dist = tf.reduce_sum(abs_diff).numpy()
+                # do 1-log1p(w1) since EMD is inversely proportional to distributions' similarities
+                return 1-np.log1p(w1_dist)
             
             case SIMILARITY_METRICS.W2:
                 # get normalized power density spectra
+                #   unlike the Calavares paper, this turns out to be unhelpful for word embeddings
                 # a = self.get_npsd_batch(a, global_npsd=True).numpy()
                 # b = self.get_npsd_batch(b, global_npsd=True).numpy()
                 a = a.numpy()
                 b = b.numpy()
                 freqs = tf.range(0, self.kernel_size, dtype=tf.float32)
                 u, v = np.meshgrid(freqs, freqs)
-
-                # custom cost metric does ~0.1% worse than Wasserstein-2 cost metric
-                # cost = np.exp(np.abs(u - v))
 
                 # Wasserstein-2 metric
                 cost = (u - v)**2
@@ -127,7 +145,11 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 psi = self._get_cdf_batch(a - b)
                 # Get the PDF associated with the wave function described by psi
                 #   p(x) = integral(0, 1, |psi|^2)
+                # this metric is different from the Wasserstein-1 metric
+                #   only in that it squares psi prior to integration
                 p_x = self._integrate_batch(tf.cast(tf.abs(psi)*tf.abs(psi), dtype=tf.complex64))
+                
+                # do 1-log1p(w1**2) since distance is inversely proportional to distributions' similarities
                 return 1-tf.reduce_sum(tf.abs(p_x)).numpy()
 
             case _:
