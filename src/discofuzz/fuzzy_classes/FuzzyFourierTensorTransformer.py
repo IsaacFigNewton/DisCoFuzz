@@ -1,4 +1,5 @@
 from typing import List
+import numpy as np
 import tensorflow as tf
 from .FourierFuzzifier import FourierFuzzifier
 
@@ -13,7 +14,7 @@ class FuzzyFourierTensorTransformer:
         self.kernel_size = kernel_size
 
     @tf.function
-    def fuzzify(self, A: tf.Tensor) -> tf.Tensor:
+    def fuzzify(self, A: tf.Tensor|np.ndarray) -> tf.Tensor:
         """
         Vectorized fuzzification.
         A: (d)
@@ -21,9 +22,11 @@ class FuzzyFourierTensorTransformer:
         """
         if len(tf.shape(A)) != 1:
             raise ValueError(f"Input tensor must have shape (d), received tensor of shape {tf.shape(A)}")
+        if isinstance(A, np.ndarray):
+            A = tf.convert_to_tensor(A.squeeze(), dtype=tf.complex64)
 
         # Reshape to (batch_size, d, kernel_size)
-        return self.fuzzifier._get_gaussian_at_mu_batch(A)
+        return tf.cast(self.fuzzifier._get_gaussian_at_mu_batch(A), dtype=tf.complex64)
 
 
     @tf.function

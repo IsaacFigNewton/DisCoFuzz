@@ -10,8 +10,8 @@ from discofuzz.config import *
 
 class BaseEmbeddingModel:
     def __init__(self,
-            sentence_transformer: Optional[str],
-            dim_reduc: Optional[PCA],
+            sentence_transformer: Optional[str] = None,
+            dim_reduc: Optional[PCA] = None,
         ) -> None:
         self.sentence_transformer = SentenceTransformer(sentence_transformer or DEFAULTS["sentence_transformer"])
         self.dim_reduc = dim_reduc or PCA(n_components=DEFAULTS["n_components"])

@@ -22,3 +22,6 @@ DEFAULTS = {
     "enrich_lemmas_with_wn": True,
     "keep_branch_json": False,
 }
+
+def get_fuzzy_emb_col(s: str, i: int):
+    return f"sent_{i}_fuzzy_{s}"

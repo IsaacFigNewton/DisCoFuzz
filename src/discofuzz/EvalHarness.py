@@ -14,16 +14,18 @@ import seaborn as sns
 import wget as wget
 import zipfile
 
-from .config import DEFAULTS, COL_PREFIXES
+from .config import *
 
 # Import DisCoFuzz package classes
 from .constants import *
 from .BaseEmbeddingModel import BaseEmbeddingModel
+from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
 
 class EvalHarness:
     def __init__(self,
             embedding_model: BaseEmbeddingModel,
             spacy_model: Any,
+            fuzzifier: FuzzyFourierTensorTransformer
         ):
         """
         :param spacy_model: Description
@@ -40,13 +42,16 @@ class EvalHarness:
         
         self.embedding_model = embedding_model
         self.spacy_model = spacy_model
+        self.fuzzifier = fuzzifier
         self.sent_embeddings = np.array([])
+        self.fuzzy_sent_embeddings: List[List[tf.Tensor]] = list()
         self.tok_embeddings = np.array([])
+        self.fuzzy_tok_embeddings: List[List[tf.Tensor]] = list()
 
     
     def fit(self, X: pd.DataFrame):
+        # get sentence embedding baseline
         sents = list()
-        # for all sentences...
         for i in [1, 2]:
             # get a list of the sentences to embed
             sents.extend(X[f"sent_{i}"].to_list())
@@ -55,6 +60,12 @@ class EvalHarness:
             sbert_sent_vects[:len(sbert_sent_vects)/2],
             sbert_sent_vects[len(sbert_sent_vects)/2:]
         )
+        
+        # get fuzzified sentence embedding baseline
+        for i in [1, 2]:
+            self.fuzzy_sent_embeddings.append(
+                pd.Series(self.sent_embeddings[i-1]).apply(self.fuzzifier.fuzzify)
+            )
         
         # get average of individual token embeddings
         mean_tok_vects = dict()
@@ -73,13 +84,18 @@ class EvalHarness:
                 )
         self.tok_embeddings = np.ndarray(list(mean_tok_vects.values()))
 
+        # get fuzzified mean token embedding baseline
+        for i in [1, 2]:
+            self.fuzzy_tok_embeddings.append(
+                pd.Series(self.tok_embeddings[i-1]).apply(self.fuzzifier.fuzzify)
+            )
         
-    def get_sbert_sentence_baseline(self, X: pd.DataFrame) -> np.ndarray:
+    def get_sbert_sentence_baseline(self) -> np.ndarray:
         # Calculate similarity
         return cosine_similarity(self.sent_embeddings[0], self.sent_embeddings[1])
     
 
-    def get_sbert_token_baseline(self, X: pd.DataFrame) -> np.ndarray:
+    def get_sbert_token_baseline(self) -> np.ndarray:
         # Add SBERT token-level baseline
         return cosine_similarity(self.tok_embeddings[0], self.tok_embeddings[1])
     

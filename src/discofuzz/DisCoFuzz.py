@@ -8,7 +8,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
-from .config import DEFAULTS, COL_PREFIXES
+from .config import *
 
 # Import DisCoFuzz package classes
 from .constants import *
@@ -24,25 +24,23 @@ from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTrans
 class DisCoFuzz:
     def __init__(self,
             embedding_model: BaseEmbeddingModel,
-            fuzzification_kernel_size: Optional[int],
-            spacy_model: Optional[str],
-            enrich_lemmas_with_wn: Optional[bool],
-            keep_branch_json: Optional[bool],
+            fuzzification_kernel_size: Optional[int] = None,
+            spacy_model: Optional[str] = None,
+            enrich_lemmas_with_wn: Optional[bool] = None,
+            keep_branch_json: Optional[bool] = None,
         ):
         """
         Creates a new DisCoFuzz instance
         
-        :param n_components: Description
-        :type n_components: Optional[int]
-
+        :param embedding_model: A BaseEmbeddingModel instance with a fitted dimensionality reduction model.
+        :type embedding_model: BaseEmbeddingModel
+        
         :param fuzzification_kernel_size: Description
         :type fuzzification_kernel_size: Optional[int]
 
         :param spacy_model: Description
         :type spacy_model: Optional[str]
 
-        :param embedding_model: Description
-        :type embedding_model: Optional[str]
         
         :param enrich_lemmas_with_wn: Whether or not to refine lemma embeddings
             by using WordNet lexical relations associated with it.
@@ -72,14 +70,9 @@ class DisCoFuzz:
             fuzzifier=          self.fuzzifier,
         )
         self.tree_builder = DepTreeBuilder(
-            spacy_model=        spacy_model,
+            spacy_model=        self.spacy_model,
             lemma_vectorizer=   self.lemma_vectorizer
         )
-    
-
-    @staticmethod
-    def _get_fuzzy_emb_col(s: str, i: int):
-        return f"sent_{i}_fuzzy_{s}"
 
 
     def _build_tensor_trees(self, dataset: pd.DataFrame) -> Dict[str, pd.Series]:
@@ -119,10 +112,6 @@ class DisCoFuzz:
                 print(f"WARNING: {col_name} already exists in X. Skipping for now...")
             else:
                 X[col_name] = pd.Series(col_values)
-        
-        # get fuzzified embedding baseline
-        for i in [1, 2]:
-            X[self._get_fuzzy_emb_col("None", i)] = X[f"sent_{i}_embedding"].apply(lambda x: self.lemma_vectorizer._fuzzify_dim_reduced_vect(x))
 
         return X
 
@@ -144,7 +133,7 @@ class DisCoFuzz:
         composer = SpacyDependencyComposer(strategy, self.fuzzifier)
         for i in [1, 2]:
             # compose embeddings
-            X[self._get_fuzzy_emb_col(strategy, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
+            X[get_fuzzy_emb_col(strategy, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
         
         return X
         
@@ -160,6 +149,6 @@ class DisCoFuzz:
             composer = SpacyDependencyComposer(s, self.fuzzifier)
             for i in [1, 2]:
                 # compose embeddings
-                X[self._get_fuzzy_emb_col(s, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
+                X[get_fuzzy_emb_col(s, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
         
         return X
