@@ -103,7 +103,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 denominator_b = tf.sqrt(tf.reduce_sum(b * b))
                 # similarity = correllation coefficient between the two npsd's
                 similarity = numerator / (denominator_a * denominator_b + 1e-10)
-                return 1 - similarity.numpy()
+                return 1 - tf.abs(similarity).numpy()
             
             case SIMILARITY_METRICS.W1:
                 # Modified Wasserstein-1 earthmover's distance of probability distributions
@@ -139,7 +139,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                     )
                     total_cost += np.sum(plan * cost)
                 
-                return 1-np.abs(total_cost)# / a.shape[0]))
+                return 1-np.abs(total_cost**2)# / a.shape[0]))
             
             case SIMILARITY_METRICS.Q:
                 psi = self._get_cdf_batch(a - b)
