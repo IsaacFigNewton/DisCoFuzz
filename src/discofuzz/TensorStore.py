@@ -3,8 +3,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.decomposition import PCA
 import nltk
-import pandas as pd
-from spacy.tokens import Token
+from .types import TokenDataclass
 
 nltk.download("wordnet")
 from nltk.corpus import wordnet as wn
@@ -57,7 +56,7 @@ class TensorStore:
             raise Exception("Cannot re-fit the dimensionality reduction model that has already been fit.")
 
 
-    def __call__(self, tok: Token) -> tf.Tensor:
+    def __call__(self, tok: TokenDataclass) -> tf.Tensor:
         """
         take a string,
         embed it,

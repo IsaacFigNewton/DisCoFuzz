@@ -32,6 +32,7 @@ class FuzzyLemmaEnricher:
     
     def _clean_syn_name(self, synset):
         return synset.name()\
+                        .strip(".")\
                         .split(".")[0]\
                         .replace("_", " ")
 
@@ -71,9 +72,13 @@ class FuzzyLemmaEnricher:
                 synset_info = {
                     s: {
                         # intersect the fuzzy sets for all a synset's hypernyms
-                        "hypernyms": self.fuzzifier.iterated_intersection(syn_dict["hypernyms"]) if len(syn_dict["hypernyms"]) > 0 else None,
+                        "hypernyms": self.fuzzifier.iterated_intersection([
+                            lemma_tens[h] for h in syn_dict["hypernyms"]
+                        ]) if len(syn_dict["hypernyms"]) > 0 else None,
                         # union the fuzzy sets for all a synset's hyponyms
-                        "hyponyms": self.fuzzifier.iterated_union(syn_dict["hyponyms"]) if len(syn_dict["hyponyms"]) > 0 else None
+                        "hyponyms": self.fuzzifier.iterated_union([
+                            lemma_tens[h] for h in syn_dict["hyponyms"]
+                        ]) if len(syn_dict["hyponyms"]) > 0 else None
                     }
                     for s, syn_dict in synset_info.items()
                 }
@@ -81,14 +86,14 @@ class FuzzyLemmaEnricher:
                 # intersect the intersection of the hypernyms' sets with the union of the hyponyms' sets
                 synset_tensors = dict()
                 for s, syn_dict in synset_info.items():
-                    if syn_dict["hypernyms"] and syn_dict["hyponyms"]:
+                    if syn_dict["hypernyms"] is not None and syn_dict["hyponyms"] is not None:
                         synset_tensors[s] = self.fuzzifier.intersection(
                             syn_dict["hypernyms"],
                             syn_dict["hyponyms"]
                         )
-                    if syn_dict["hypernyms"]:
+                    elif syn_dict["hypernyms"] is not None:
                         synset_tensors[s] = syn_dict["hypernyms"]
-                    if syn_dict["hyponyms"]:
+                    elif syn_dict["hyponyms"] is not None:
                         synset_tensors[s] = syn_dict["hyponyms"]
                 
                 return {
@@ -110,31 +115,39 @@ class FuzzyLemmaEnricher:
         # map lemmas to dicts of synsets and their associated embeddings
         lemma_syn_tens_map = {
             l: {
-                s.name(): synset_tens[s.name()]
-                for s in wn.synsets(l)
-                if s is not None
+                str(s.name()): synset_tens[s.name()]
+                for s in wn.synsets(l, lang="eng")
+                if s is not None and s.name() in synset_tens
             }
             for l in lemma_tens.keys()
         }
+        
+        # filter out lemma synsets based on their POS tags
+        lemma_pos_tens_list_map = {
+            l: {
+                # filter out noun synsets' tensors
+                "n": [t for s, t in lem_dict.items() if ".n." in s],
+                # filter out verb synsets' tensors
+                "v": [t for s, t in lem_dict.items() if ".v." in s]
+            }
+            for l, lem_dict in lemma_syn_tens_map.items()
+        }
+
         # map lemma+POS tag to list of synset tensors
         lemma_pos_tens_map = {
             l: {
                 # get the mean of all noun synsets' tensors,
                 #   use the lemma's base (unenriched) tensor as a fallback
-                "n": tf.reduce_mean(tf.convert_to_tensor([
-                    t
-                    for s, t in lem_dict.items()
-                    if ".n." in s
-                ]), axis=0) or lemma_tens[l],
+                "n": tf.reduce_mean(tf.convert_to_tensor(rel_dict["n"]), axis=0)\
+                        if len(rel_dict["n"]) > 0\
+                            else lemma_tens[l],
                 # get the mean of all verb synsets' tensors,
                 #   use the lemma's base (unenriched) tensor as a fallback
-                "v": tf.reduce_mean(tf.convert_to_tensor([
-                    t
-                    for s, t in lem_dict.items()
-                    if ".v." in s
-                ]), axis=0) or lemma_tens[l]
+                "v":  tf.reduce_mean(tf.convert_to_tensor(rel_dict["v"]), axis=0)\
+                        if len(rel_dict["v"]) > 0\
+                            else lemma_tens[l],
             }
-            for l, lem_dict in lemma_syn_tens_map.items()
+            for l, rel_dict in lemma_pos_tens_list_map.items()
         }
 
         return {
@@ -169,6 +182,7 @@ class FuzzyLemmaEnricher:
             strategy=strategy
         )
         
+        print("Enriching fuzzified lemma tensors with fuzzified synset tensors...")
         self.keyed_tensors = self._enrich_tensor_store(
             lemma_tens=lemma_tensors,
             synset_tens=synset_tensors

@@ -2,6 +2,7 @@ import tensorflow as tf
 from spacy.tokens import Doc, Token
 import json
 
+from ..types import TokenDataclass
 from ..TensorStore import TensorStore
 
 class DepTreeBuilder:
@@ -9,10 +10,25 @@ class DepTreeBuilder:
         self.spacy_model = spacy_model
         self.lemma_vectorizer = lemma_vectorizer
 
+    @staticmethod
+    def _token_to_dict(tok: Token):
+        return {
+            "text": tok.text,
+            "pos_": tok.pos_
+        }
+    
+    @staticmethod
+    def _token_to_str(tok: Token):
+        return json.dumps({
+            "text": tok.text,
+            "pos_": tok.pos_
+        }, indent=4)
+    
+
     def _build_branch(self, tok: Token):
-        tok_lefts = [json.dumps(vars(t)) for t in tok.lefts]
-        tok_rights = [json.dumps(vars(t)) for t in tok.rights if not t.is_punct]
-        branch = [json.dumps(vars(tok))]
+        tok_lefts = [self._token_to_str(t) for t in tok.lefts]
+        tok_rights = [self._token_to_str(t) for t in tok.rights if not t.is_punct]
+        branch = [self._token_to_str(tok)]
         if len(tok_lefts) > 0:
             branch.append(tuple(tok_lefts))
         if len(tok_rights) > 0:
@@ -22,7 +38,7 @@ class DepTreeBuilder:
         # if the current token has a parent,
         #   add it to the branch
         if tok.has_head:
-            branch = (str(tok.head.lemma_), tuple(branch))
+            branch = (self._token_to_str(tok.head), tuple(branch))
 
         # store in dataframe
         return branch
@@ -48,5 +64,6 @@ class DepTreeBuilder:
                 for child in branch
             ])
         elif isinstance(branch, str):
-            tok = Token(**json.loads(branch))
+
+            tok = TokenDataclass(**json.loads(branch))
             return self.lemma_vectorizer(tok).numpy()
