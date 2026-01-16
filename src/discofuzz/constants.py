@@ -1,7 +1,6 @@
 from enum import Enum
 
 STRATEGIES = [
-    None,
     "mean",
     "intersection+mean",
     "intersection+union",

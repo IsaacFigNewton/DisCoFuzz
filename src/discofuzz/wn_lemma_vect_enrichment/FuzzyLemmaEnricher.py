@@ -11,19 +11,19 @@ from nltk.corpus import wordnet as wn
 from sentence_transformers import SentenceTransformer
 from ..fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
 
+from ..BaseEmbeddingModel import BaseEmbeddingModel
+
 LEMMA_ENRICHMENT_STRATEGIES = [
     "union-of-hyper-hypo-intersections"
 ]
 
 class FuzzyLemmaEnricher:
     def __init__(self,
-            embedding_model: SentenceTransformer,
+            embedding_model: BaseEmbeddingModel,
             fuzzifier: FuzzyFourierTensorTransformer,
-            dim_reduc=None,
         ):
         self.embedding_model = embedding_model
         self.fuzzifier = fuzzifier
-        self.dim_reduc = dim_reduc
         
         self.keyed_tensors:Dict[str, Dict[str, tf.Tensor]] = dict()
 
@@ -158,22 +158,20 @@ class FuzzyLemmaEnricher:
 
 
     def get_lemma_embeddings(self, strategy:str = LEMMA_ENRICHMENT_STRATEGIES[0]) -> Dict[str, Dict[str, tf.Tensor]]:
-        print("Initializing TensorStore instance with wordnet lemma embeddings as defaults...")
+        print("Enriching TensorStore instance with wordnet lemma embeddings as defaults...")
         print("Embedding all the wordnet lemmas...")
         all_lemmas = [
             l.replace("_", " ")
             for l in wn.all_lemma_names()
         ]
-        lemma_vects = self.embedding_model.encode(all_lemmas)
         # fit and reduce lemma vects
         print("Performing dimensionality reduction on all the wordnet lemmas...")
-        lemma_vects_reduced = self.dim_reduc.fit_transform(lemma_vects)
-        self.fitted = True
+        lemma_vects = self.embedding_model.encode(all_lemmas)
         
         # store the fuzzified, dimensionality-reduced lemma embeddings to lemma_tensors
         lemma_tensors = dict()
         print("Fuzzifying all the dimensionality-reduced wordnet lemmas...")
-        for lemma, vect in zip(all_lemmas, lemma_vects_reduced):
+        for lemma, vect in zip(all_lemmas, lemma_vects):
             lemma_tensors[lemma] = self._fuzzify_dim_reduced_vect(vect)
 
         print("Getting fuzzy tensor embeddings for all the wordnet synsets...")

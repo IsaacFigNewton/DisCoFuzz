@@ -9,21 +9,19 @@ nltk.download("wordnet")
 from nltk.corpus import wordnet as wn
 
 from sentence_transformers import SentenceTransformer
+from .BaseEmbeddingModel import BaseEmbeddingModel
+
 from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
 from .wn_lemma_vect_enrichment.FuzzyLemmaEnricher import FuzzyLemmaEnricher
 
 class TensorStore:
     def __init__(self,
-            embedding_model: Optional[SentenceTransformer]=None,
-            fuzzifier:Optional[FuzzyFourierTensorTransformer]=None,
-            dim_reduc=None,
+            embedding_model: BaseEmbeddingModel,
+            fuzzifier:Optional[FuzzyFourierTensorTransformer],
             cache_embeddings:bool=True,
-            n_components:int=64
         ):
-        self.embedding_model = embedding_model or SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        self.embedding_model = embedding_model
         self.fuzzifier = fuzzifier or FuzzyFourierTensorTransformer()
-        self.dim_reduc = dim_reduc or PCA(n_components=n_components)
-        self.fitted = False
         
         self.cache_embeddings = cache_embeddings
         self.keyed_tensors:Dict[str, Dict[str, tf.Tensor]] = dict()
@@ -36,28 +34,14 @@ class TensorStore:
         return tf.convert_to_tensor(self.fuzzifier.fuzzify(embedding), dtype=tf.complex64)
 
     def _embed_text(self, text:str) -> tf.Tensor:
-        embedding = self.embedding_model.encode(text)
-        embedding = self.dim_reduc.transform(embedding.reshape(1, -1))
-        return self._fuzzify_dim_reduced_vect(embedding)
+        return self._fuzzify_dim_reduced_vect(self.embedding_model.encode(text))
 
     def populate_with_wn_defaults(self):
-        if not self.fitted:
-            raise Exception("TensorStore.dim_reduc must be fit prior to populating tensor store with defaults.")
-        
         self.lemma_enricher = FuzzyLemmaEnricher(
             embedding_model=self.embedding_model,
             fuzzifier=self.fuzzifier,
-            dim_reduc=self.dim_reduc,
         )
         self.keyed_tensors = self.lemma_enricher.get_lemma_embeddings()
-
-
-    def fit(self, X:np.ndarray, y=None):
-        if not self.fitted:
-            self.dim_reduc.fit_transform(X)
-            self.fitted = True
-        else:
-            raise Exception("Cannot re-fit the dimensionality reduction model that has already been fit.")
 
 
     def __call__(self, tok: TokenDataclass) -> tf.Tensor:
@@ -67,9 +51,6 @@ class TensorStore:
         store it if cache_embeddings=True
         return the tensor
         """
-        if not self.fitted:
-            raise Exception("TensorStore.dim_reduc must be fit prior to calling.")
-
         pos = tok.pos_
         # clean the SpaCy POS tags
         if pos in {"PROPN", "NOUN", "PRON"}:

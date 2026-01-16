@@ -43,15 +43,15 @@ class DepTreeBuilder:
         # store in dataframe
         return branch
 
-    def extract_branch(self, row, i:int):
+    def extract_branch(self, sentence: str, tok_idx: int):
         # build out branch
-        doc = self.spacy_model(row[f"sent_{i}"])
-        tok = doc[row[f"tok_idx_{i}"]]
+        doc = self.spacy_model(sentence)
+        tok = doc[tok_idx]
         return self._build_branch(tok)
     
-    def extract_tree(self, row, i:int):
+    def extract_tree(self, sentence: str):
         # build out branch
-        doc = self.spacy_model(row[f"sent_{i}"])
+        doc = self.spacy_model(sentence)
         tok = list(doc.sents)[0].root
         return self._build_branch(tok)
     

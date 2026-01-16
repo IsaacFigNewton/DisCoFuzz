@@ -1,14 +1,13 @@
 from .constants import *
-from .FourierPDF import FourierPDF
 from .TensorStore import TensorStore
 from .fuzzy_classes import (
+    FourierPDF,
     FourierFuzzifier,
     FuzzyFourierSetMixin,
     FuzzyFourierTensorTransformer,
 )
 
 __all__ = [
-    "FourierPDF",
     "TensorStore",
     "FourierFuzzifier",
     "FuzzyFourierSetMixin",

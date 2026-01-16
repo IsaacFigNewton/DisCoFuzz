@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from ..FourierPDF import FourierPDF
+from .FourierPDF import FourierPDF
 
 class FuzzyFourierSetMixin(FourierPDF):
   def __init__(self, sigma: float, kernel_size: int):
@@ -13,6 +13,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       # C_k = e^{-\frac{a^{2}k^{2}}{2}} and keep mu portion separate for now
       c_k = tf.exp(-0.5 * (self.sigma ** 2) * (self.k_values ** 2))
       self.fourier_coeffs = c_k / (2 * np.pi)
+
 
   def _get_gaussian_at_mu_batch(self, mu: tf.Tensor) -> tf.Tensor:
       """
@@ -32,6 +33,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       # combine (batch_size, self.kernel_size) with (self.kernel_size,) self.fourier_coeffs
       return self._normalize_batch(mu_c_k * self.fourier_coeffs)
 
+
   def fuzzify(self, component: float) -> tf.Tensor:
       """
       Convert a real-valued component to a Fourier series representation of a Gaussian.
@@ -40,6 +42,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       """
       mu = tf.constant([component], dtype=tf.float32)
       return self._fuzzify_batch(mu)
+
 
   def fuzzify_batch(self, components: tf.Tensor) -> tf.Tensor:
       """
@@ -51,6 +54,7 @@ class FuzzyFourierSetMixin(FourierPDF):
           raise ValueError(f"Input tensor must have shape (batch_size,), received tensor of shape {tf.shape(components)}")
 
       return self._get_gaussian_at_mu_batch(components)
+
 
   def negation(self, a: tf.Tensor) -> tf.Tensor:
       """
@@ -67,6 +71,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       )
 
       return self._normalize(one - a)
+
 
   def negation_batch(self, a: tf.Tensor) -> tf.Tensor:
       """
@@ -94,6 +99,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       # get normalized negation
       return self._normalize_batch(ones - a)
 
+
   def intersection(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
       """
       Fuzzy intersection using product (min approximation).
@@ -104,6 +110,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       if normalize:
           result = self._normalize(result)
       return result
+
 
   def intersection_batch(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
       """
@@ -118,6 +125,7 @@ class FuzzyFourierSetMixin(FourierPDF):
           result = self._normalize_batch(result)
       return result
 
+
   def union(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
       """
       Fuzzy union: a + b - a*b
@@ -129,6 +137,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       if normalize:
           result = self._normalize(result)
       return result
+
 
   def union_batch(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
       """
