@@ -52,7 +52,7 @@ class DepTreeBuilder:
     def extract_tree(self, row, i:int):
         # build out branch
         doc = self.spacy_model(row[f"sent_{i}"])
-        tok = doc.sents[0].root
+        tok = list(doc.sents)[0].root
         return self._build_branch(tok)
     
     def get_branch_tuple_embedding(self,

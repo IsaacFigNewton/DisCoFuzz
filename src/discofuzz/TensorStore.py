@@ -18,11 +18,12 @@ class TensorStore:
             fuzzifier:Optional[FuzzyFourierTensorTransformer]=None,
             dim_reduc=None,
             cache_embeddings:bool=True,
-            wn_lemma_defaults:bool=True
+            wn_lemma_defaults:bool=True,
+            n_components:int=64
         ):
         self.embedding_model = embedding_model or SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
         self.fuzzifier = fuzzifier or FuzzyFourierTensorTransformer()
-        self.dim_reduc = dim_reduc or PCA(n_components=128)
+        self.dim_reduc = dim_reduc or PCA(n_components=n_components)
         self.fitted = False
         
         self.cache_embeddings = cache_embeddings
