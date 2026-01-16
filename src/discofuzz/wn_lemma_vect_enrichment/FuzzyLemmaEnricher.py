@@ -126,9 +126,9 @@ class FuzzyLemmaEnricher:
         lemma_pos_tens_list_map = {
             l: {
                 # filter out noun synsets' tensors
-                "n": [t for s, t in lem_dict.items() if ".n." in s],
+                "NOUN": [t for s, t in lem_dict.items() if ".n." in s],
                 # filter out verb synsets' tensors
-                "v": [t for s, t in lem_dict.items() if ".v." in s]
+                "VERB": [t for s, t in lem_dict.items() if ".v." in s]
             }
             for l, lem_dict in lemma_syn_tens_map.items()
         }
@@ -138,13 +138,13 @@ class FuzzyLemmaEnricher:
             l: {
                 # get the mean of all noun synsets' tensors,
                 #   use the lemma's base (unenriched) tensor as a fallback
-                "n": tf.reduce_mean(tf.convert_to_tensor(rel_dict["n"]), axis=0)\
-                        if len(rel_dict["n"]) > 0\
+                "NOUN": tf.reduce_mean(tf.convert_to_tensor(rel_dict["NOUN"]), axis=0)\
+                        if len(rel_dict["NOUN"]) > 0\
                             else lemma_tens[l],
                 # get the mean of all verb synsets' tensors,
                 #   use the lemma's base (unenriched) tensor as a fallback
-                "v":  tf.reduce_mean(tf.convert_to_tensor(rel_dict["v"]), axis=0)\
-                        if len(rel_dict["v"]) > 0\
+                "VERB":  tf.reduce_mean(tf.convert_to_tensor(rel_dict["VERB"]), axis=0)\
+                        if len(rel_dict["VERB"]) > 0\
                             else lemma_tens[l],
             }
             for l, rel_dict in lemma_pos_tens_list_map.items()

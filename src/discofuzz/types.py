@@ -1,3 +1,4 @@
 class TokenDataclass:
-    text: str
-    pos_: str
+    def __init__(self, text: str, pos_: str) -> None:
+        self.text = text
+        self.pos_ = pos_

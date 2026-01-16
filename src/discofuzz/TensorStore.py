@@ -36,6 +36,8 @@ class TensorStore:
                 dim_reduc=self.dim_reduc,
             )
             self.keyed_tensors = self.lemma_enricher.get_lemma_embeddings()
+            self.dim_reduc = self.lemma_enricher.dim_reduc
+            self.fitted = True
 
     def _fuzzify_dim_reduced_vect(self, vect: np.ndarray):
         embedding = vect.squeeze()
@@ -67,12 +69,12 @@ class TensorStore:
             raise Exception("TensorStore.dim_reduc must be fit prior to calling.")
 
         # if there's a cached embedding for the input text
-        if self.keyed_tensors.get(tok.text) is not None:
-            return self.keyed_tensors[tok.text][tok.pos_]
+        if self.keyed_tensors.get(tok.text.lower()) is not None:
+            return self.keyed_tensors[tok.text.lower()][tok.pos_]
         # otherwise embed it
-        embedding = self._embed_text(tok.text)
+        embedding = self._embed_text(tok.text.lower())
         # store it if desired
         if self.cache_embeddings:
-            self.keyed_tensors[tok.text][tok.pos_] = embedding
+            self.keyed_tensors[tok.text.lower()][tok.pos_] = embedding
         # return embedding
         return embedding
