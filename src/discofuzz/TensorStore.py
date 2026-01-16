@@ -44,7 +44,7 @@ class TensorStore:
         embedding = tf.convert_to_tensor(embedding, dtype=tf.float32)
         return tf.convert_to_tensor(self.fuzzifier.fuzzify(embedding), dtype=tf.complex64)
 
-    def _embed_text(self, text:str):
+    def _embed_text(self, text:str) -> tf.Tensor:
         embedding = self.embedding_model.encode(text)
         embedding = self.dim_reduc.transform(embedding.reshape(1, -1))
         return self._fuzzify_dim_reduced_vect(embedding)

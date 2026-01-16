@@ -1,11 +1,15 @@
 	strategy	similarity_metric	model	accuracy	precision	recall	f1_score
-0	sent_emb	cos	sent_emb_cos_sim	0.626	0.526	0.6575	0.5844444444444444
-1	None_PCA	quantum	fuzzy_None_PCA_quantum_sim	0.622	0.522	0.6525	0.58
-2	None_PCA	wasserstein-1	fuzzy_None_PCA_wasserstein-1_sim	0.608	0.508	0.635	0.5644444444444444
-3	None_PCA	cos	fuzzy_None_PCA_cos_sim	0.584	0.484	0.605	0.5377777777777778
-4	sbert_token_avg	cos	sbert_token_avg_cos_sim	0.584	0.484	0.605	0.5377777777777778
-5	intersection+mean_PCA	wasserstein-2	fuzzy_intersection+mean_PCA_wasserstein-2_sim	0.55	0.45	0.5625	0.5
-6	intersection+mean_PCA	quantum	fuzzy_intersection+mean_PCA_quantum_sim	0.542	0.442	0.5525	0.4911111111111111
-7	intersection+mean_PCA	wasserstein-1	fuzzy_intersection+mean_PCA_wasserstein-1_sim	0.538	0.438	0.5475	0.4866666666666667
-8	None_PCA	wasserstein-2	fuzzy_None_PCA_wasserstein-2_sim	0.538	0.438	0.5475	0.4866666666666667
-9	intersection+mean_PCA	cos	fuzzy_intersection+mean_PCA_cos_sim	0.478	0.378	0.4725	0.42
+0	sent_emb	cos	sent_emb_cos_sim	0.62	0.54	0.6428571428571429	0.5869565217391305
+1	sbert_token_avg	cos	sbert_token_avg_cos_sim	0.6	0.52	0.6190476190476191	0.5652173913043478
+2	None_PCA	quantum	fuzzy_None_PCA_quantum_sim	0.6	0.52	0.6190476190476191	0.5652173913043478
+3	None_PCA	wasserstein-1	fuzzy_None_PCA_wasserstein-1_sim	0.56	0.48	0.5714285714285714	0.5217391304347826
+4	None_PCA	cos	fuzzy_None_PCA_cos_sim	0.54	0.46	0.5476190476190477	0.5
+5	intersection+mean_PCA	quantum	fuzzy_intersection+mean_PCA_quantum_sim	0.52	0.44	0.5238095238095238	0.4782608695652174
+6	intersection+mean_PCA	wasserstein-1	fuzzy_intersection+mean_PCA_wasserstein-1_sim	0.52	0.44	0.5238095238095238	0.4782608695652174
+7	intersection+mean_PCA	wasserstein-2	fuzzy_intersection+mean_PCA_wasserstein-2_sim	0.52	0.44	0.5238095238095238	0.4782608695652174
+8	None_PCA	wasserstein-2	fuzzy_None_PCA_wasserstein-2_sim	0.5	0.42	0.5	0.45652173913043476
+9	mean_PCA	wasserstein-2	fuzzy_mean_PCA_wasserstein-2_sim	0.48	0.4	0.47619047619047616	0.43478260869565216
+10	intersection+mean_PCA	cos	fuzzy_intersection+mean_PCA_cos_sim	0.46	0.38	0.4523809523809524	0.41304347826086957
+11	mean_PCA	quantum	fuzzy_mean_PCA_quantum_sim	0.46	0.38	0.4523809523809524	0.41304347826086957
+12	mean_PCA	wasserstein-1	fuzzy_mean_PCA_wasserstein-1_sim	0.46	0.38	0.4523809523809524	0.41304347826086957
+13	mean_PCA	cos	fuzzy_mean_PCA_cos_sim	0.44	0.36	0.42857142857142855	0.391304347826087
