@@ -18,7 +18,6 @@ class TensorStore:
             fuzzifier:Optional[FuzzyFourierTensorTransformer]=None,
             dim_reduc=None,
             cache_embeddings:bool=True,
-            wn_lemma_defaults:bool=True,
             n_components:int=64
         ):
         self.embedding_model = embedding_model or SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
@@ -30,15 +29,6 @@ class TensorStore:
         self.keyed_tensors:Dict[str, Dict[str, tf.Tensor]] = dict()
 
         self.lemma_enricher = None
-        if wn_lemma_defaults:
-            self.lemma_enricher = FuzzyLemmaEnricher(
-                embedding_model=self.embedding_model,
-                fuzzifier=self.fuzzifier,
-                dim_reduc=self.dim_reduc,
-            )
-            self.keyed_tensors = self.lemma_enricher.get_lemma_embeddings()
-            self.dim_reduc = self.lemma_enricher.dim_reduc
-            self.fitted = True
 
     def _fuzzify_dim_reduced_vect(self, vect: np.ndarray):
         embedding = vect.squeeze()
@@ -49,6 +39,17 @@ class TensorStore:
         embedding = self.embedding_model.encode(text)
         embedding = self.dim_reduc.transform(embedding.reshape(1, -1))
         return self._fuzzify_dim_reduced_vect(embedding)
+
+    def populate_with_wn_defaults(self):
+        if not self.fitted:
+            raise Exception("TensorStore.dim_reduc must be fit prior to populating tensor store with defaults.")
+        
+        self.lemma_enricher = FuzzyLemmaEnricher(
+            embedding_model=self.embedding_model,
+            fuzzifier=self.fuzzifier,
+            dim_reduc=self.dim_reduc,
+        )
+        self.keyed_tensors = self.lemma_enricher.get_lemma_embeddings()
 
 
     def fit(self, X:np.ndarray, y=None):
