@@ -68,13 +68,25 @@ class TensorStore:
         if not self.fitted:
             raise Exception("TensorStore.dim_reduc must be fit prior to calling.")
 
+        pos = tok.pos_
+        # clean the SpaCy POS tags
+        if pos in {"PROPN", "NOUN", "PRON"}:
+            pos = "NOUN"
+        
         # if there's a cached embedding for the input text
         if self.keyed_tensors.get(tok.text.lower()) is not None:
-            return self.keyed_tensors[tok.text.lower()][tok.pos_]
+            # if the embedding for the lemma with this particular POS is not in the dict
+            if pos not in self.keyed_tensors[tok.text.lower()]:
+                # otherwise embed it
+                embedding = self._embed_text(tok.text.lower())
+                self.keyed_tensors[tok.text.lower()][pos] = embedding
+            return self.keyed_tensors[tok.text.lower()][pos]
+
         # otherwise embed it
         embedding = self._embed_text(tok.text.lower())
         # store it if desired
         if self.cache_embeddings:
-            self.keyed_tensors[tok.text.lower()][tok.pos_] = embedding
+            self.keyed_tensors[tok.text.lower()] = dict()
+            self.keyed_tensors[tok.text.lower()][pos] = embedding
         # return embedding
         return embedding
