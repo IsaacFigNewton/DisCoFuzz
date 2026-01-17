@@ -41,19 +41,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       Returns: shape (kernel_size,)
       """
       mu = tf.constant([component], dtype=tf.float32)
-      return self._fuzzify_batch(mu)
-
-
-  def fuzzify_batch(self, components: tf.Tensor) -> tf.Tensor:
-      """
-      Batch fuzzification.
-      components: shape (batch_size,)
-      Returns: shape (batch_size, kernel_size)
-      """
-      if len(tf.shape(components)) != 1:
-          raise ValueError(f"Input tensor must have shape (batch_size,), received tensor of shape {tf.shape(components)}")
-
-      return self._get_gaussian_at_mu_batch(components)
+      return self._get_gaussian_at_mu_batch(mu)
 
 
   def negation(self, a: tf.Tensor) -> tf.Tensor:

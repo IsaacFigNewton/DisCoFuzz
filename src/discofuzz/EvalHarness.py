@@ -43,9 +43,9 @@ class EvalHarness:
         self.embedding_model = embedding_model
         self.spacy_model = spacy_model
         self.fuzzifier = fuzzifier
-        self.sent_embeddings = np.array([])
+        self.sent_embeddings: List[np.ndarray] = list()
         self.fuzzy_sent_embeddings: List[List[tf.Tensor]] = list()
-        self.tok_embeddings = np.array([])
+        self.tok_embeddings: List[np.ndarray] = list()
         self.fuzzy_tok_embeddings: List[List[tf.Tensor]] = list()
 
     
@@ -56,10 +56,10 @@ class EvalHarness:
             # get a list of the sentences to embed
             sents.extend(X[f"sent_{i}"].to_list())
         sbert_sent_vects = self.embedding_model.fit_transform(sents)
-        self.sent_embeddings = np.array(
-            sbert_sent_vects[:len(sbert_sent_vects)/2],
-            sbert_sent_vects[len(sbert_sent_vects)/2:]
-        )
+        self.sent_embeddings = [
+            sbert_sent_vects[:len(X)].tolist(),
+            sbert_sent_vects[len(X):].tolist()
+        ]
         
         # get fuzzified sentence embedding baseline
         for i in [1, 2]:
@@ -73,7 +73,7 @@ class EvalHarness:
             mean_tok_vects[j] = list()
             for i, row in X.iterrows():
                 token_embs = [
-                    self.embedding_model.encode(token.text)
+                    self.embedding_model.encode([token.text])
                     for token in self.spacy_model(row[f"sent_{j}"])
                     if not token.is_punct
                 ]
@@ -82,7 +82,7 @@ class EvalHarness:
                     if token_embs
                     else np.zeros((384))
                 )
-        self.tok_embeddings = np.ndarray(list(mean_tok_vects.values()))
+        self.tok_embeddings = list(mean_tok_vects.values())
 
         # get fuzzified mean token embedding baseline
         for i in [1, 2]:
