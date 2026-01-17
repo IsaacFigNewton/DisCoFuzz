@@ -29,7 +29,7 @@ class TensorStore:
         self.lemma_enricher = None
 
     def _embed_text(self, text:str) -> tf.Tensor:
-        return self.fuzzifier.fuzzify(self.embedding_model.encode([text]))
+        return self.fuzzifier.fuzzify(self.embedding_model.encode([text])[0])
 
     def populate_with_wn_defaults(self):
         self.lemma_enricher = FuzzyLemmaEnricher(

@@ -19,7 +19,7 @@ DEFAULTS = {
     "fuzzification_kernel_size": 16,
     "spacy_model": "en_core_web_sm",
     "sentence_transformer": "all-MiniLM-L6-v2",
-    "enrich_lemmas_with_wn": True,
+    "enrich_lemmas_with_wn": False,
     "keep_branch_json": False,
 }
 

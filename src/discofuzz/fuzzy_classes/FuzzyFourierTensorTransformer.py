@@ -20,10 +20,10 @@ class FuzzyFourierTensorTransformer:
         A: (d)
         Returns: shape (d, kernel_size)
         """
-        if len(tf.shape(A)) != 1:
-            raise ValueError(f"Input tensor must have shape (d), received tensor of shape {tf.shape(A)}")
         if isinstance(A, np.ndarray):
             A = tf.convert_to_tensor(A.squeeze(), dtype=tf.complex64)
+        if len(tf.shape(A)) != 1:
+            raise ValueError(f"Input tensor must have shape (1), received tensor of shape {tf.shape(A)}")
 
         # Reshape to (batch_size, d, kernel_size)
         return tf.cast(self.fuzzifier._get_gaussian_at_mu_batch(A), dtype=tf.complex64)
