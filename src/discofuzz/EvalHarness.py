@@ -57,14 +57,14 @@ class EvalHarness:
             sents.extend(X[f"sent_{i}"].to_list())
         sbert_sent_vects = self.embedding_model.fit_transform(sents)
         self.sent_embeddings = [
-            sbert_sent_vects[:len(X)].tolist(),
-            sbert_sent_vects[len(X):].tolist()
+            sbert_sent_vects[:len(X)],
+            sbert_sent_vects[len(X):]
         ]
-        
+
         # get fuzzified sentence embedding baseline
         for i in [1, 2]:
             self.fuzzy_sent_embeddings.append(
-                pd.Series(self.sent_embeddings[i-1]).apply(self.fuzzifier.fuzzify)
+                pd.Series([np.array(emb) for emb in self.sent_embeddings[i-1]]).apply(self.fuzzifier.fuzzify)
             )
         
         # get average of individual token embeddings
@@ -77,25 +77,26 @@ class EvalHarness:
                     for token in self.spacy_model(row[f"sent_{j}"])
                     if not token.is_punct
                 ]
-                mean_tok_vects[j].append(
-                    tf.reduce_mean(token_embs, axis=0).numpy()
-                    if token_embs
-                    else np.zeros((384))
-                )
-        self.tok_embeddings = list(mean_tok_vects.values())
+                if token_embs:
+                    # Concatenate all token embeddings and take mean
+                    all_embs = np.concatenate(token_embs, axis=0)
+                    mean_tok_vects[j].append(np.mean(all_embs, axis=0))
+                else:
+                    mean_tok_vects[j].append(np.zeros(DEFAULTS["n_components"]))
+        self.tok_embeddings = [np.array(mean_tok_vects[1]), np.array(mean_tok_vects[2])]
 
         # get fuzzified mean token embedding baseline
         for i in [1, 2]:
             self.fuzzy_tok_embeddings.append(
-                pd.Series(self.tok_embeddings[i-1]).apply(self.fuzzifier.fuzzify)
+                pd.Series([np.array(emb) for emb in self.tok_embeddings[i-1]]).apply(self.fuzzifier.fuzzify)
             )
         
     def get_sbert_sentence_baseline(self) -> np.ndarray:
-        # Calculate similarity
-        return cosine_similarity(self.sent_embeddings[0], self.sent_embeddings[1])
+        # Calculate similarity - returns diagonal of similarity matrix
+        return np.diag(cosine_similarity(self.sent_embeddings[0], self.sent_embeddings[1]))
     
 
     def get_sbert_token_baseline(self) -> np.ndarray:
-        # Add SBERT token-level baseline
-        return cosine_similarity(self.tok_embeddings[0], self.tok_embeddings[1])
+        # Add SBERT token-level baseline - returns diagonal of similarity matrix
+        return np.diag(cosine_similarity(self.tok_embeddings[0], self.tok_embeddings[1]))
     

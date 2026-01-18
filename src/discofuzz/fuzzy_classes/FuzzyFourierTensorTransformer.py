@@ -17,13 +17,18 @@ class FuzzyFourierTensorTransformer:
     def fuzzify(self, A: tf.Tensor|np.ndarray) -> tf.Tensor:
         """
         Vectorized fuzzification.
-        A: (d)
+        A: (d) or (1, d)
         Returns: shape (d, kernel_size)
         """
         if isinstance(A, np.ndarray):
-            A = tf.convert_to_tensor(A.squeeze(), dtype=tf.complex64)
+            A = tf.convert_to_tensor(A, dtype=tf.complex64)
+
+        # Ensure A is 1D by squeezing all dimensions of size 1
+        A = tf.squeeze(A)
+
+        # Verify the result is 1D
         if len(tf.shape(A)) != 1:
-            raise ValueError(f"Input tensor must have shape (1), received tensor of shape {tf.shape(A)}")
+            raise ValueError(f"Input tensor must be 1D after squeezing, received tensor of shape {tf.shape(A)}")
 
         # Reshape to (batch_size, d, kernel_size)
         return tf.cast(self.fuzzifier._get_gaussian_at_mu_batch(A), dtype=tf.complex64)
