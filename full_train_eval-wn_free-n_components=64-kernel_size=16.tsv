@@ -1,7 +1,7 @@
 	strategy	similarity_metric	model	accuracy	precision	recall	f1_score
-0	baseline_sent	cos	baseline_sent_cos_sim	0.5	0.45555555555555555	0.9761904761904762	0.6212121212121212
+0	baseline_sent	cos	baseline_sent_cos_sim	0.68	0.6	0.7142857142857143	0.6521739130434783
 1	baseline_tok	cos	fuzzy_baseline_tok_cos_sim	0.64	0.56	0.6666666666666666	0.6086956521739131
-2	baseline_tok	cos	baseline_tok_cos_sim	0.42	0.42	1.0	0.5915492957746479
+2	baseline_tok	cos	baseline_tok_cos_sim	0.6	0.52	0.6190476190476191	0.5652173913043478
 3	baseline_sent	quantum	fuzzy_baseline_sent_quantum_sim	0.6	0.52	0.6190476190476191	0.5652173913043478
 4	baseline_tok	wasserstein-2	fuzzy_baseline_tok_wasserstein-2_sim	0.6	0.52	0.6190476190476191	0.5652173913043478
 5	baseline_sent	cos	fuzzy_baseline_sent_cos_sim	0.58	0.5	0.5952380952380952	0.5434782608695652
