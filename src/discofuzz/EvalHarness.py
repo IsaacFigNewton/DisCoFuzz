@@ -23,7 +23,7 @@ import zipfile
 from .config import *
 
 # Import DisCoFuzz package classes
-from .constants import *
+from .constants import SIMILARITY_METRICS
 from .BaseEmbeddingModel import BaseEmbeddingModel
 from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
 
@@ -49,7 +49,7 @@ class EvalHarness:
             print(f"GPU available: {gpus}")
         
         self.sim_metrics = sim_metrics
-        self.composition_strategies = sorted(composition_strategies)
+        self.composition_strategies = sorted(composition_strategies + ["baseline_sent", "baseline_tok"])
 
         self.embedding_model = embedding_model
         self.spacy_model = spacy_model
@@ -122,7 +122,7 @@ class EvalHarness:
         sims_df = pd.DataFrame()
         for sim_metric in self.sim_metrics:
             print(f"\n\t=== Computing similarities with {sim_metric.value} metric ===")
-            for s in STRATEGIES + ["baseline_sent", "baseline_tok"]:
+            for s in self.composition_strategies:
                 print(f"\t\tGetting compositional embedding relatedness scores for {s} approach...")
                 sims = list()
                 for i, row in X.iterrows():
@@ -164,7 +164,7 @@ class EvalHarness:
             metric_cols = [
                 col
                 for col in X.columns
-                if "baseline" not in col and sim_metric.value in col
+                if sim_metric.value in col
             ]
             cmap = plt.get_cmap("viridis")
             colors = cmap(np.linspace(0, 1, len(metric_cols)))
@@ -239,7 +239,7 @@ class EvalHarness:
 
     def _get_baselines(self, scores: pd.DataFrame):
         baselines = dict()
-        baseline_inclusion_reqs = lambda x: "baseline_" in x and ("fuzzy" not in x or "quantum" in x)
+        baseline_inclusion_reqs = lambda x: "baseline_" in x and "fuzzy" not in x
         for i, row in scores.iterrows():
             if baseline_inclusion_reqs(row['model']):
                 # print(row)
