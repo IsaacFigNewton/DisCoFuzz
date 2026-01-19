@@ -26,7 +26,7 @@ class WiCDatasetHandler:
     
 
     @staticmethod
-    def load_dataset(path:str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def load_dataset(path:str) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
         # Try loading training data
         try:
             X_train = pd.read_csv(f"{path}/WiC_dataset/train/train.data.txt", sep="\t", header=None)
@@ -43,8 +43,8 @@ class WiCDatasetHandler:
         X_train.columns = ["lemma", "pos", "index1-index2", "sent_1", "sent_2"]
 
         # Load ground truth labels
-        y_train.columns = ["is_related"]
-        y_train["is_related"] = y_train["is_related"].apply(lambda x: 1 if x == "T" else 0)
+        y_train = y_train[0].apply(lambda x: 1 if x == "T" else 0)
+        y_test = y_test[0].apply(lambda x: 1 if x == "T" else 0)
 
         # clean dataframe
         X_train["pos"] = X_train["pos"].apply(lambda x: x.lower())
