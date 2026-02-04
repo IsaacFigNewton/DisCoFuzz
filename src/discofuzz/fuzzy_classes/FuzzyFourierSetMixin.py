@@ -16,22 +16,19 @@ class FuzzyFourierSetMixin(FourierPDF):
 
 
   def _get_gaussian_at_mu_batch(self, mu: tf.Tensor) -> tf.Tensor:
-      """
-      Batch computation of Fourier series for Gaussians centered at multiple mu values.
-      mu: shape (batch_size,)
-      Returns: shape (batch_size, kernel_size)
-      """
-      # mu part of C_n = e^{-ikb}
-      #   combine mu.shape = (batch_size,) with self.k_values.T.shape = (,self.kernel_size)
-      #   to get tensor of shape (batch_size, self.kernel_size)
-      mu_c_k = tf.linalg.matmul(
-          tf.expand_dims(tf.cast(mu, dtype=tf.complex64), axis=1),
-          tf.expand_dims(self.k_values, axis=0)
-      )
-      mu_c_k = tf.exp(-1j * mu_c_k)
+        """
+        Batch computation of Fourier series for Gaussians centered at multiple mu values.
+        mu: shape (batch_size,)
+        Returns: shape (batch_size, kernel_size)
+        """
+        # mu part of C_n = e^{-ikb}
+        #   combine mu.shape = (batch_size,) with self.k_values.T.shape = (,self.kernel_size)
+        #   to get tensor of shape (batch_size, self.kernel_size)
+        mu = tf.cast(mu, tf.complex64)[:, None]              # (B,1)
+        k  = tf.cast(self.k_values, tf.complex64)[None, :]   # (1,K)
+        mu_c_k = tf.exp(-1j * (2.0*np.pi) * (mu * k))        # (B,K)
+        return self._normalize_batch(mu_c_k * self.fourier_coeffs)
 
-      # combine (batch_size, self.kernel_size) with (self.kernel_size,) self.fourier_coeffs
-      return self._normalize_batch(mu_c_k * self.fourier_coeffs)
 
 
   def fuzzify(self, component: float) -> tf.Tensor:
