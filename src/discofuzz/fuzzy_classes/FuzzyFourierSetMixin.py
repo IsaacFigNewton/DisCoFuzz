@@ -26,7 +26,7 @@ class FuzzyFourierSetMixin(FourierPDF):
         #   to get tensor of shape (batch_size, self.kernel_size)
         mu = tf.cast(mu, tf.complex64)[:, None]              # (B,1)
         k  = tf.cast(self.k_values, tf.complex64)[None, :]   # (1,K)
-        mu_c_k = tf.exp(-1j * (2.0*np.pi) * (mu * k))        # (B,K)
+        mu_c_k = tf.exp(-1j * (mu * k))                      # (B,K)
         return self._normalize_batch(mu_c_k * self.fourier_coeffs)
 
 
