@@ -175,7 +175,7 @@ class EvalHarness:
                     y=X[col],
                     color=colors[i],
                     label=col.replace(f"fuzzy_", "").replace(f"_{sim_metric.value}_sim", ""),
-                    alpha=0.6
+                    alpha=0.5
                 )
             
             ax.set_xlabel("sentence embedding cosine similarity", fontsize=12)
