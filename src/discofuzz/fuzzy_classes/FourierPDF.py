@@ -190,7 +190,7 @@ class FourierPDF:
         if len(tf.shape(a)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
 
-        return a * tf.exp(1j * self.k_values)
+        return a * 1j * self.k_values
 
     def _differentiate(self, a: tf.Tensor) -> tf.Tensor:
         """
