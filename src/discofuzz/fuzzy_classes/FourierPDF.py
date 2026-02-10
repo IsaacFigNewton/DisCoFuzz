@@ -70,7 +70,7 @@ class FourierPDF:
         return tf.tensor_scatter_nd_update(
             AC,
             indices,
-            a[:, 0]
+            DC
         )
 
     def _integrate_batch(self, a: tf.Tensor, ub:float=1, lb:float=0) -> tf.Tensor:
@@ -124,15 +124,19 @@ class FourierPDF:
         if a.dtype != tf.complex64:
             raise ValueError(f"Input tensor must be complex64, received {a.dtype}")
 
-        total_integral = self._integrate_batch(a)  # (batch_size,)
-        total_integral = tf.expand_dims(total_integral, 1)  # (batch_size, 1)
+        # total_integral = self._integrate_batch(a)  # (batch_size,)
+        # total_integral = tf.expand_dims(total_integral, 1)  # (batch_size, 1)
 
-        # Avoid division by zero
-        total_integral = tf.where(
-            tf.abs(total_integral) > 1e-10,
-            total_integral,
-            tf.ones_like(total_integral)
-        )
+        # # Avoid division by zero
+        # total_integral = tf.where(
+        #     tf.abs(total_integral) > 1e-10,
+        #     total_integral,
+        #     tf.ones_like(total_integral)
+        # )
+        
+        # normalize each row's power spectral densities
+        totals = tf.reduce_sum(tf.abs(a)**2, axis=1)
+        total_integral = tf.expand_dims(tf.cast(totals, dtype=tf.complex64), axis=1)
 
         return a / total_integral
 
@@ -162,13 +166,20 @@ class FourierPDF:
         if len(tf.shape(b)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(b)}")
 
-        # Batch FFT convolution
-        A_fft = tf.signal.fft(tf.cast(a, tf.complex64))
-        B_fft = tf.signal.fft(tf.cast(b, tf.complex64))
-        C_fft = A_fft * B_fft
-        C = tf.signal.ifft(C_fft)
+        # # Batch FFT convolution
+        # A_fft = tf.signal.fft(tf.cast(a, tf.complex64))
+        # B_fft = tf.signal.fft(tf.cast(b, tf.complex64))
+        # C_fft = A_fft * B_fft
+        # C = tf.signal.ifft(C_fft)
 
-        return tf.cast(C, tf.complex64)
+        # return tf.cast(C, tf.complex64)
+        # print(a)
+        # print(tf.reverse(a, axis=[-1]))
+        # do convolution on the logs of the tensors for numerical stability?
+        lconv = tf.exp(tf.math.log(a) + tf.math.log(tf.reverse(b, axis=[-1])))
+        rconv = tf.exp(tf.math.log(b) + tf.math.log(tf.reverse(a, axis=[-1])))
+        return lconv + rconv
+
 
     def _convolve(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         """
