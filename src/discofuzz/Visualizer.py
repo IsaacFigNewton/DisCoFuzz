@@ -14,8 +14,6 @@ class Visualizer:
     """
 
     def __init__(self,
-            fuzzy_sample: np.ndarray,
-            N: int = 200,
             figsize=(7, 6)
         ) -> None:
         """
@@ -28,52 +26,42 @@ class Visualizer:
             N: Grid resolution.
             figsize: Default figure size for single plots.
         """
-        if fuzzy_sample.ndim != 2 or fuzzy_sample.shape[0] != 2:
-            raise ValueError(f"Expected fuzzy_sample shape (2, K); got {fuzzy_sample.shape}")
 
         self.figsize = figsize
-        self.N = int(N)
 
-        self.x = np.linspace(0.0, 1.0, self.N, endpoint=False)
-        self.fx, self.fy = self._compute_marginals(fuzzy_sample)
-        self.H = (self.fx[:, None] * self.fy[None, :]).numpy()
+    def _get_first_two_components(self, a):
+        if a.ndim != 2:
+            raise ValueError(f"Expected fuzzy_sample shape (2, K); got {fuzzy_sample.shape}")
 
-    def _compute_marginals(self,
-            fuzzy_sample: np.ndarray
-        ) -> tuple[tf.Tensor, tf.Tensor]:
-        """Compute fx(x) and fy(y) from Fourier coefficients."""
-        k = np.arange(fuzzy_sample.shape[1])
-        basis = np.exp(1j * np.outer(k, self.x))  # (K, N)
-
-        fx = tf.math.reduce_sum(fuzzy_sample[0][:, None] * basis, axis=0)  # (N,)
-        fy = tf.math.reduce_sum(fuzzy_sample[1][:, None] * basis, axis=0)  # (N,)
-        return fx, fy
+        x = np.linspace(0.0, 1.0, tf.shape(a)[1], endpoint=False)
+        fx = a[0, :].numpy()
+        fy = a[1, :].numpy()
+        H = np.outer(fx, fy)
+        print(H.shape)
+        return x, fx, fy, H
 
 
-    def _get_view_specs(self, view: str):
-        x = self.fx.numpy()
-        y = self.fy.numpy()
-
+    def _get_view_specs(self, view: str, fx, fy, H):
         match view:
             case "real":
-                data2d = self.H.real
-                fx_vals = x.real
-                fy_vals = y.real
+                data2d = H.real
+                fx_vals = fx.real
+                fy_vals = fy.real
                 label = "Re"
             case "imag":
-                data2d = self.H.imag
-                fx_vals = x.imag
-                fy_vals = y.imag
+                data2d = H.imag
+                fx_vals = fx.imag
+                fy_vals = fy.imag
                 label = "Im"
             case "magnitude":
-                data2d = np.abs(self.H)
-                fx_vals = np.abs(x)
-                fy_vals = np.abs(y)
+                data2d = np.abs(H)
+                fx_vals = np.abs(fx)
+                fy_vals = np.abs(fy)
                 label = "|H|"
             case "phase":
-                data2d = np.angle(self.H)
-                fx_vals = np.angle(x)
-                fy_vals = np.angle(y)
+                data2d = np.angle(H)
+                fx_vals = np.angle(fx)
+                fy_vals = np.angle(fy)
                 label = "arg(H)"
             case _:
                 raise ValueError(f"Unknown view '{view}'")
@@ -82,6 +70,7 @@ class Visualizer:
 
     def plot(
         self,
+        a: tf.Tensor,
         view: str = "magnitude",
         cmap: str = "viridis",
         fig: Any = None,
@@ -93,6 +82,8 @@ class Visualizer:
         """Plot one view as a heatmap, optionally with marginal 1D line plots
         (left: fy, bottom: fx).
         """
+        x, fx, fy, H = self._get_first_two_components(a)
+
         main_fig = not fig
         if not fig:
             fig = plt.figure(figsize=self.figsize)
@@ -101,7 +92,7 @@ class Visualizer:
         if not line_kwargs:
             line_kwargs = {"lw": 1.5}
 
-        data2d, fx_vals, fy_vals, label = self._get_view_specs(view)
+        data2d, fx_vals, fy_vals, label = self._get_view_specs(view, fx, fy, H)
 
         if marginals:
             # Layout with marginals
@@ -143,14 +134,14 @@ class Visualizer:
 
         if marginals:
             # --- Left marginal (fy vs y) ---
-            ax_left.plot(fy_vals, self.x, **line_kwargs)
+            ax_left.plot(fy_vals, x, **line_kwargs)
             ax_left.set_ylabel("y ∈ [0, 1]", labelpad=6)
             ax_left.invert_xaxis()
             ax_left.grid(True, alpha=0.2)
             ax_left.tick_params(axis="y", left=False, labelleft=False)
 
             # --- Bottom marginal (fx vs x) ---
-            ax_bottom.plot(self.x, fx_vals, **line_kwargs)
+            ax_bottom.plot(x, fx_vals, **line_kwargs)
             ax_bottom.set_xlabel("x ∈ [0, 1]", labelpad=4)
             ax_bottom.invert_yaxis()
             ax_bottom.grid(True, alpha=0.2)
@@ -174,6 +165,7 @@ class Visualizer:
 
     def plot_views(
         self,
+        a: tf.Tensor,
         views: tuple[str, str, str, str] = ("real", "imaginary", "magnitude", "phase"),
         cmap: str = "viridis",
         line_kwargs: dict | None = None,
@@ -188,6 +180,7 @@ class Visualizer:
         for i, view in enumerate(views):
             r, c = divmod(i, 2)
             self.plot(
+                a,
                 fig=fig,
                 subspec=outer[r, c],
                 view=view,

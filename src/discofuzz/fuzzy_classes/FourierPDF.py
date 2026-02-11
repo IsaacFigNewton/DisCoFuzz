@@ -17,6 +17,27 @@ class FourierPDF:
             axis=0
         )
 
+    def evaluate_batch(self,
+            a: tf.Tensor,
+            resolution: int = 200
+        ) -> tf.Tensor:
+        """
+        Compute fx(x) for 'resolution' # samples,
+            for each distribution in the batch from their Fourier coefficients.
+        """
+        batch_size = tf.shape(a)[0]
+        x = tf.cast(tf.linspace(0.0, 1.0, resolution), dtype=tf.complex64)
+        # get a matrix of shape (kernel_size, resolution)
+        #   for evaluating a range of sample points along the signal
+        x_k = tf.matmul(self.k_values[:, None], x[None, :])
+        basis = tf.math.exp(1j * x_k)
+
+        # (batch_size, kernel_size) x (kernel_size, resolution)
+        #   = (batch_size, resolution)
+        print(tf.matmul(a, basis).shape)
+        return tf.matmul(a, basis)
+
+
     def _get_DC_AC_divisor_batch(self, a:tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         """
         Docstring for _get_DC_AC_divisor_batch
