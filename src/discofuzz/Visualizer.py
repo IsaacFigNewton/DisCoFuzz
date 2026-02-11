@@ -160,7 +160,36 @@ class Visualizer:
         if main_fig:
             fig.tight_layout()
             plt.show()
+    
+    def plot_rows(self, a):
+        """
+        Given a numpy array `a` of shape (d, n), plot each row as a line
+        on the same figure using the viridis colormap.
+        """
+        if a.ndim != 2:
+            raise ValueError("Input array must be 2D with shape (d, n).")
 
+        d, n = a.shape
+        x = np.linspace(0, 1, n)
+
+        cmap = plt.cm.viridis
+        colors = cmap(np.linspace(0, 1, d))
+
+        plt.figure(figsize=self.figsize)
+        for i in range(d):
+            plt.plot(
+                x,
+                a[i],
+                color=colors[i],
+                label=f"Row {i}",
+                alpha=2.0/d
+            )
+
+        plt.xlabel("x")
+        plt.ylabel("Value")
+        plt.title("Line plots of each row (viridis colormap)")
+        plt.legend()
+        plt.show()
 
 
     def plot_views(
