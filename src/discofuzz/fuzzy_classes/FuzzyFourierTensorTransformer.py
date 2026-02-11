@@ -9,7 +9,7 @@ class FuzzyFourierTensorTransformer:
     All operations are vectorized and GPU-compatible.
     """
 
-    def __init__(self, sigma: float = 0.1, kernel_size: int = 8):
+    def __init__(self, sigma: float = 0.2, kernel_size: int = 16):
         self.fuzzifier = FourierFuzzifier(sigma, kernel_size)
         self.kernel_size = kernel_size
 
