@@ -78,6 +78,7 @@ class Visualizer:
         line_kwargs: dict | None = None,
         add_colorbar: bool = True,
         marginals: bool = True,
+        title:str = "Components 0 and 1"
     ) -> None:
         """Plot one view as a heatmap, optionally with marginal 1D line plots
         (left: fy, bottom: fx).
@@ -130,7 +131,8 @@ class Visualizer:
             extent=[0.0, 1.0, 0.0, 1.0],
             cmap=cmap,
         )
-        ax_main.set_title(f"{view.capitalize()} of Components 0 and 1")
+        # ax_main.set_title(f"Interference Pattern {view.capitalize()} for {title}")
+        ax_main.set_title(title)
 
         if marginals:
             # --- Left marginal (fy vs y) ---
@@ -186,9 +188,7 @@ class Visualizer:
             )
 
         plt.xlabel("x")
-        plt.ylabel("Value")
-        plt.title("Line plots of each row (viridis colormap)")
-        plt.legend()
+        plt.ylabel("F(x)")
         plt.show()
 
 

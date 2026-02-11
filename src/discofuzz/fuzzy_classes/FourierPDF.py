@@ -10,10 +10,6 @@ class FourierPDF:
             tf.complex64
         )
 
-        # init negative k values for padding (purely for convolution)
-        #   tf.shape(neg_k) = (1, self.kernel_size)
-        self.neg_k_values = -1 * (self.kernel_size - self.k_values)
-
         # pre-compute partial divisor for faster integration
         #   shape=(, self.kernel_size)
         # add 1e-20 to avoid division by 0
@@ -171,73 +167,6 @@ class FourierPDF:
         return tf.squeeze(result_batch, axis=0)
 
 
-    @tf.function
-    def _rowwise_complex_conv(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-        """
-        Row-wise 1D convolution (depthwise / per-row kernel) supporting real or complex.
-
-        - a: [batch, 3k]
-        - b: [batch, 3k]
-        Convolve each row of a with the associated row of b, then keep
-        output indices [k-1 : 2k-1] (k values).
-
-        For complex inputs, computes:
-        (a_r + i a_i) * (b_r + i b_i)
-        = (a_r*b_r - a_i*b_i) + i(a_r*b_i + a_i*b_r)
-        where * denotes the same row-wise real conv.
-        """
-        # b = b[:, :(1 - self.kernel_size)]
-
-        def _rowwise_conv_real(a_real: tf.Tensor, b_real: tf.Tensor) -> tf.Tensor:
-            # a_real, b_real: [B, 3k] real dtype
-            a_t = tf.transpose(a_real)  # [3k, B]
-            b_t = tf.transpose(b_real)  # [3k, B]
-
-            main = tf.expand_dims(a_t, axis=0)  # [1, 3k, B]  (width, channels=B)
-
-            # Diagonal kernels: [filter_width=3k, in_channels=B, out_channels=B]
-            kernels = tf.linalg.diag(b_t)
-
-            y_g = tf.nn.conv1d(
-                main,
-                filters=kernels,
-                stride=1,
-                padding="SAME",
-            )  # [1, out_w, B]
-
-            y = tf.transpose(tf.squeeze(y_g, axis=0))  # [B, out_w]
-
-            tf.print("out_w =", tf.shape(y)[1])
-            return y  # [B, k]
-
-        # Fast path for real inputs
-        if not a.dtype.is_complex and not b.dtype.is_complex:
-            return _rowwise_conv_real(a, b)
-
-        # Complex path: promote both to complex, then split
-        # (also handles the case where one is complex and the other is real)
-        complex_dtype = a.dtype if a.dtype.is_complex else b.dtype
-        a_c = tf.cast(a, complex_dtype)
-        b_c = tf.cast(b, complex_dtype)
-
-        a_r = tf.math.real(a_c)
-        a_i = tf.math.imag(a_c)
-        b_r = tf.math.real(b_c)
-        b_i = tf.math.imag(b_c)
-
-        # Compute the 4 real convolutions (each returns [B, k])
-        rr = _rowwise_conv_real(a_r, b_r)
-        ii = _rowwise_conv_real(a_i, b_i)
-        ri = _rowwise_conv_real(a_r, b_i)
-        ir = _rowwise_conv_real(a_i, b_r)
-
-        real_out = rr - ii
-        imag_out = ri + ir
-
-        print("shape of convolved output: ", tf.shape(real_out))
-        return tf.complex(real_out, imag_out)
-
-
     def _convolve_batch(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         """
         Batch convolution using FFT.
@@ -249,20 +178,13 @@ class FourierPDF:
         if len(tf.shape(b)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(b)}")
 
-        # # Batch FFT convolution
-        # A_fft = tf.signal.fft(tf.cast(a, tf.complex64))
-        # B_fft = tf.signal.fft(tf.cast(b, tf.complex64))
-        # C_fft = A_fft * B_fft
-        # C = tf.signal.ifft(C_fft)
-        # return tf.cast(C, tf.complex64)
-        
-        # get paddings
-        # a_conv_a = self._rowwise_complex_conv(a, a)
-        a_conv_b = self._rowwise_complex_conv(a, b)
-        b_conv_a = self._rowwise_complex_conv(b, a)
-        # b_conv_b = self._rowwise_complex_conv(b, b)
-        return -1 / (a_conv_b + b_conv_a)
-
+        # Batch FFT convolution
+        A_fft = tf.signal.fft(tf.cast(a, tf.complex64))
+        B_fft = tf.signal.fft(tf.cast(b, tf.complex64))
+        C_fft = A_fft * B_fft
+        C = tf.signal.ifft(C_fft)
+        return tf.cast(C, tf.complex64)
+    
 
     def _convolve(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         """

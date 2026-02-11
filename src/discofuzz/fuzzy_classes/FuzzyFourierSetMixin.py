@@ -117,7 +117,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       a, b: shape (kernel_size,)
       Returns: shape (kernel_size,)
       """
-      convolved = self._convolve(a, b)
+      convolved = self.intersection(a, b)
       result = a + b - convolved
       if normalize:
           result = self._normalize(result)
@@ -132,7 +132,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       """
       if len(tf.shape(a)) != 2:
           raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-      convolved = self._convolve_batch(a, b)
+      convolved = self.intersection_batch(a, b)
       result = a + b - convolved
       if normalize:
           result = self._normalize_batch(result)

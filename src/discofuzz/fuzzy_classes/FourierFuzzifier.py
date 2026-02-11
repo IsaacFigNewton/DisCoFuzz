@@ -97,7 +97,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         match method:
 
             case SIMILARITY_METRICS.COS:
-                # numerator = aggregated hadamard product of a and b
+                # numerator = aggregated spectra of convolution of a and b
                 numerator = tf.reduce_sum(a * b)
                 denominator_a = tf.sqrt(tf.reduce_sum(a * a))
                 denominator_b = tf.sqrt(tf.reduce_sum(b * b))
