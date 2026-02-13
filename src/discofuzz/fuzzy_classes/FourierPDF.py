@@ -166,7 +166,6 @@ class FourierPDF:
         C_fft = A_fft * B_fft
         C = tf.signal.ifft(C_fft)
         return tf.cast(C, tf.complex64)
-    
 
     def _convolve(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
         """
@@ -179,6 +178,7 @@ class FourierPDF:
         result_batch = self._convolve_batch(a_batch, b_batch)
         return tf.squeeze(result_batch, axis=0)
 
+
     def _differentiate_batch(self, a: tf.Tensor) -> tf.Tensor:
         """
         Batch differentiation.
@@ -188,14 +188,4 @@ class FourierPDF:
         if len(tf.shape(a)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
 
-        return a * 1j * self.k_values
-
-    def _differentiate(self, a: tf.Tensor) -> tf.Tensor:
-        """
-        Single differentiation helper.
-        a: shape (kernel_size,)
-        Returns: shape (kernel_size,)
-        """
-        a_batch = tf.expand_dims(a, axis=0)
-        result_batch = self._differentiate_batch(a_batch)
-        return tf.squeeze(result_batch, axis=0)
+        return a * 1j * self.k_values - tf.broadcast_to(self.sawtooth, tf.shape(a))

@@ -42,56 +42,60 @@ class FuzzyFourierSetMixin(FourierPDF):
 
 
   def negation_batch(self, a: tf.Tensor) -> tf.Tensor:
-      """
-      Batch fuzzy negation: NOT(a) = 1 - a
-      a: shape (batch_size, kernel_size)
-      Returns: shape (batch_size, kernel_size)
-      """
-      if len(tf.shape(a)) != 2:
-          raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-      batch_size = tf.shape(a)[0]
+        """
+        Batch fuzzy negation: NOT(a) = 1 - a
+        a: shape (batch_size, kernel_size)
+        Returns: shape (batch_size, kernel_size)
+        """
+        if len(tf.shape(a)) != 2:
+            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
+        batch_size = tf.shape(a)[0]
 
-      # Create batch of constant function 1
-      # base tensor of same shape as a
-      ones = tf.zeros_like(a)
-      # indices at which to place 1's
-      indices = tf.stack([
-          tf.range(batch_size),
-          tf.zeros(batch_size, dtype=tf.int32)
-      ], axis=1)
-      # ones to be inserted at said indices
-      updates = tf.ones([batch_size], dtype=tf.complex64)
-      # update the base tensor with 1's
-      ones = tf.tensor_scatter_nd_update(ones, indices, updates)
+        # Create batch of constant function 1
+        # indices at which to place 1's
+        indices = tf.stack([
+            tf.range(batch_size),
+            tf.zeros(batch_size, dtype=tf.int32)
+        ], axis=1)
+        # ones to be inserted at said indices
+        updates = tf.ones([batch_size], dtype=tf.complex64)
+        # update the base tensor with 1's
+        ones = tf.tensor_scatter_nd_update(
+            tf.zeros_like(a),
+            indices,
+            updates
+        )
 
-      # get normalized negation
-      return self._normalize_batch(ones - a)
+        # get a's cdf
+        cdf_a = self._get_cdf_batch(a)
+        neg_a = self._normalize_batch(ones - cdf_a)
+        pdf_neg_a = self._differentiate_batch(neg_a)
 
-
-  def intersection_batch(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
-      """
-      Batch fuzzy intersection using product.
-      a, b: shape (batch_size, kernel_size)
-      Returns: shape (batch_size, kernel_size)
-      """
-      if len(tf.shape(a)) != 2:
-          raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-      result = self._convolve_batch(a, b)
-      if normalize:
-          result = self._normalize_batch(result)
-      return result
+        # get normalized negation
+        return pdf_neg_a
 
 
-  def union_batch(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
-      """
-      Batch fuzzy union: a + b - a*b
-      a, b: shape (batch_size, kernel_size)
-      Returns: shape (batch_size, kernel_size)
-      """
-      if len(tf.shape(a)) != 2:
-          raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-      convolved = self._convolve_batch(a, b)
-      result = a + b - convolved
-      if normalize:
-          result = self._normalize_batch(result)
-      return result
+  def intersection_batch(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
+        """
+        Batch fuzzy intersection using product.
+        a, b: shape (batch_size, kernel_size)
+        Returns: shape (batch_size, kernel_size)
+        """
+        if len(tf.shape(a)) != 2:
+            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
+        result = self._convolve_batch(a, b)
+        result = self._normalize_batch(result)
+        return result
+
+
+  def union_batch(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
+        """
+        Batch fuzzy union: a + b - a*b
+        a, b: shape (batch_size, kernel_size)
+        Returns: shape (batch_size, kernel_size)
+        """
+        if len(tf.shape(a)) != 2:
+            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
+        result = a + b #- self._convolve_batch(a, b)
+        result = self._normalize_batch(result)
+        return result
