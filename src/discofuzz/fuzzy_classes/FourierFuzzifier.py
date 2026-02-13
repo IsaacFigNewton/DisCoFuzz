@@ -14,29 +14,6 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         if kernel_size < 1:
             raise ValueError("Kernel size must be at least 1")
         super().__init__(sigma, kernel_size)
-
-    def get_npsd_batch(self, a: tf.Tensor, global_npsd:bool=False) -> tf.Tensor:
-        # normalize the power spectral densities
-        if len(tf.shape(a)) != 2:
-            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-        
-        norms = tf.math.reduce_sum(tf.abs(a), axis=1)
-
-        # if we want to normalize against the global power spectral densities
-        #   default is just component-wise power spectra normalization
-        if global_npsd:
-            # aggregate power spectral densities
-            norms = tf.math.reduce_sum(norms, axis=0)
-            # broadcast it to use with 'a'
-            norms = tf.expand_dims(norms, axis=0)
-        
-        norms = tf.expand_dims(norms, axis=1)
-
-        norms = tf.broadcast_to(
-            norms,
-            [tf.shape(a)[0], tf.shape(a)[1]]
-        )
-        return tf.abs(a) / norms
     
 
     def get_p_wasserstein_distance_batch(self, a: tf.Tensor, b: tf.Tensor, p: int) -> float:
@@ -118,8 +95,8 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
             case SIMILARITY_METRICS.W2:
                 # get UNnormalized power density spectra
                 #   unlike the Calavares paper, the NPSD turns out to be unhelpful for word embeddings
-                a = self.get_npsd_batch(a, global_npsd=True).numpy()
-                b = self.get_npsd_batch(b, global_npsd=True).numpy()
+                a = self._normalize_batch(a, global_npsd=True).numpy()
+                b = self._normalize_batch(b, global_npsd=True).numpy()
                 # a = tf.abs(a).numpy()
                 # b = tf.abs(b).numpy()
                 freqs = tf.range(0, self.kernel_size, dtype=tf.float32)

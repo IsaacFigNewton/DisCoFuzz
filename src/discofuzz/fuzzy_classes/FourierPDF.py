@@ -1,5 +1,6 @@
 from typing import Tuple
 import tensorflow as tf
+import numpy as np
 
 class FourierPDF:
     def __init__(self, kernel_size:int):
@@ -12,21 +13,38 @@ class FourierPDF:
 
         # pre-compute partial divisor for faster integration
         #   shape=(, self.kernel_size)
-        # add 1e-20 to avoid division by 0
+        # replace 0th term with 1 to avoid division by 0
         self.divisor = tf.expand_dims(
-            self.k_values+1e-20,
+            tf.concat([tf.constant([1], dtype=tf.complex64), self.k_values[1:]], axis=0),
+            axis=0
+        )
+
+        # used as ramp for integration
+        # expand along batch axis
+        self.sawtooth = 1 / (1j * self.k_values) * (-1)**(self.k_values + 1)
+        # set the DC term of the sawtooth signal to 0 to get rid of nan
+        self.sawtooth = tf.tensor_scatter_nd_update(
+            self.sawtooth,
+            indices=[[0]],
+            updates=tf.constant([0], dtype=tf.complex64)
+        )
+        self.sawtooth = tf.expand_dims(
+            self.sawtooth,
             axis=0
         )
 
     def evaluate_batch(self,
             a: tf.Tensor,
-            resolution: int = 200
+            resolution: int = 200,
+            x: tf.Tensor|None = None
         ) -> tf.Tensor:
         """
         Compute fx(x) for 'resolution' # samples,
             for each distribution in the batch from their Fourier coefficients.
         """
-        x = tf.cast(tf.linspace(0.0, 1.0, resolution), dtype=tf.complex64)
+        if x is None:
+            x = tf.linspace(0.0, 1.0, resolution)
+        x = tf.cast(x, dtype=tf.complex64)
         # get a matrix of shape (kernel_size, resolution)
         #   for evaluating a range of sample points along the signal
         x_k = tf.matmul(self.k_values[:, None], x[None, :])
@@ -34,44 +52,8 @@ class FourierPDF:
 
         # (batch_size, kernel_size) x (kernel_size, resolution)
         #   = (batch_size, resolution)
-        print("shape of tensor evaluated from 0 to 1: ", tf.matmul(a, basis).shape)
         return tf.matmul(a, basis)
 
-
-    def _get_DC_AC_divisor_batch(self, a:tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-        """
-        Docstring for _get_DC_AC_divisor_batch
-        
-        :param self: Description
-        :param a: Description
-        :type a: tf.Tensor
-        :return: Description
-        :rtype: Tuple[Tensor, Tensor, Tensor, Tensor]
-        """
-        
-        batch_size = tf.shape(a)[0]
-
-        # Create indices for the k=0 term for each item in the batch
-        row_indices = tf.range(batch_size)
-        col_indices = tf.zeros(batch_size, dtype=tf.int32)
-        indices = tf.stack([row_indices, col_indices], axis=1)
-
-        # get DC/constant terms (first column)
-        DC = a[:, 0]
-        # get AC term (just set first column to 0s)
-        AC = tf.tensor_scatter_nd_update(
-            a,
-            indices,
-            tf.zeros(batch_size, dtype=tf.complex64)
-        )
-        
-        # get divisors
-        harmonics = tf.broadcast_to(
-            self.divisor,
-            tf.shape(a),
-        )
-
-        return DC, AC, harmonics, indices
 
     def _get_cdf_batch(self, a: tf.Tensor) -> tf.Tensor:
         """
@@ -84,15 +66,41 @@ class FourierPDF:
         if a.dtype != tf.complex64:
             raise ValueError(f"Input tensors must be complex64, received {a.dtype}")
 
-        DC, AC, harmonics, indices = self._get_DC_AC_divisor_batch(a)
-        AC = AC / harmonics
+        batch_size = tf.shape(a)[0]
 
-        # add the k=0 terms back in
-        return tf.tensor_scatter_nd_update(
-            AC,
-            indices,
-            DC
+        # Create indices for the k=0 term for each item in the batch
+        row_indices = tf.range(batch_size)
+        col_indices = tf.zeros(batch_size, dtype=tf.int32)
+        indices = tf.stack([row_indices, col_indices], axis=1)
+
+        # get antiderivative of k=0 term
+        # get DC/constant terms (first column)
+        DC = tf.broadcast_to(
+            a[:, 0][:, None],
+            tf.shape(a)
         )
+        # build ramp terms (for integral)
+        ramp = tf.broadcast_to(
+            self.sawtooth,
+            tf.shape(a)
+        )
+
+        # get antiderivatives for all k >= 1
+        # get AC term (just set first column to 0s)
+        AC = tf.tensor_scatter_nd_update(
+            a,
+            indices,
+            tf.zeros(batch_size, dtype=tf.complex64)
+        )
+        # get divisors
+        harmonics = tf.broadcast_to(
+            self.divisor,
+            tf.shape(a),
+        )
+        AC = AC / (1j * harmonics)
+
+        # add the k=0 terms' antiderivatives (ramp) back into AC terms
+        return DC * ramp + AC
 
     def _integrate_batch(self, a: tf.Tensor, ub:float=1, lb:float=0) -> tf.Tensor:
         """
@@ -105,66 +113,40 @@ class FourierPDF:
         if a.dtype != tf.complex64:
             raise ValueError(f"Input tensors must be complex64, received {a.dtype}")
 
-        DC, AC, harmonics, _ = self._get_DC_AC_divisor_batch(a)
+        bounds = tf.constant([lb, ub])
+        cdf = self._get_cdf_batch(a)
+        cdf_lb_ub = self.evaluate_batch(cdf, x=bounds)
+        # integral is just cdf evaluated at 1 - cdf evaluated at 0
+        return cdf_lb_ub[:, 1] - cdf_lb_ub[:, 0]
 
-        upper_bound = tf.exp(harmonics * ub)
-        lower_bound = tf.exp(harmonics * lb)
-        diff = upper_bound - lower_bound
 
-        integrals_k_nonzero = tf.reduce_sum(
-            (AC / harmonics) * diff,
-            axis=1
-        )
-
-        # Combine k=0 and k>0 terms
-        #   returns rank-1 tensor with just components' fourier series' integrals
-        return DC + integrals_k_nonzero
-
-    def _integrate(self, a: tf.Tensor, ub:float=1, lb:float=0) -> tf.Tensor:
-        """
-        Single integration helper.
-        a: shape (kernel_size)
-        Returns: scalar
-        """
-        if len(tf.shape(a)) != 1:
-            raise ValueError(f"Input tensor must have shape (kernel_size,), received tensor of shape {tf.shape(a)}")
-        if a.dtype != tf.complex64:
-            raise ValueError(f"Input tensors must be complex64, received {a.dtype}")
-
-        a_batch = tf.expand_dims(a, axis=0)
-        result_batch = self._integrate_batch(a_batch, ub, lb)
-        return tf.squeeze(result_batch)
-
-    def _normalize_batch(self, a: tf.Tensor) -> tf.Tensor:
+    def _normalize_batch(self, a: tf.Tensor, global_npsd:bool=False) -> tf.Tensor:
         """
         Batch normalization of probability density functions.
+        Returns Normalized Power Spectral Densities (NPSD) of input pdfs
         a: shape (batch_size, kernel_size)
         """
         if len(tf.shape(a)) != 2:
             raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
         if a.dtype != tf.complex64:
             raise ValueError(f"Input tensor must be complex64, received {a.dtype}")
+        # normalize the power spectral densities
+        if len(tf.shape(a)) != 2:
+            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
+        
+        # norms = tf.math.reduce_sum(tf.abs(a)**2, axis=1)
+        norms = self._integrate_batch(a)
 
-        # normalize each row's power spectral densities
-        totals = tf.reduce_sum(tf.abs(a)**2, axis=1)
-        total_integral = tf.expand_dims(tf.cast(totals, dtype=tf.complex64), axis=1)
-
-        return a / total_integral
-
-    def _normalize(self, a: tf.Tensor) -> tf.Tensor:
-        """
-        Single normalization helper for normalizing probability density functions.
-        a: shape (kernel_size,)
-        Returns: shape (kernel_size,)
-        """
-        if len(tf.shape(a)) != 1:
-            raise ValueError(f"Input tensor must have shape (kernel_size,), received tensor of shape {tf.shape(a)}")
-        if a.dtype != tf.complex64:
-            raise ValueError(f"Input tensor must be complex64, received {a.dtype}")
-
-        a_batch = tf.expand_dims(a, axis=0)
-        result_batch = self._normalize_batch(a_batch)
-        return tf.squeeze(result_batch, axis=0)
+        # if we want to normalize against the global power spectral densities
+        #   default is just component-wise power spectra normalization
+        if global_npsd:
+            # aggregate power spectral densities
+            norms = tf.math.reduce_sum(norms, axis=0)
+            # broadcast it to use with 'a'
+            norms = tf.broadcast_to(norms, tf.shape(a)[0])
+        
+        norms = tf.broadcast_to(norms[:, None], tf.shape(a))
+        return a / norms
 
 
     def _convolve_batch(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:

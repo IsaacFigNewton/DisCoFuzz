@@ -41,23 +41,6 @@ class FuzzyFourierSetMixin(FourierPDF):
       return self._get_gaussian_at_mu_batch(mu)
 
 
-  def negation(self, a: tf.Tensor) -> tf.Tensor:
-      """
-      Fuzzy negation: NOT(a) = 1 - a
-      a: shape (kernel_size,)
-      Returns: shape (kernel_size,)
-      """
-      # Create representation of constant function 1
-      one = tf.zeros_like(a)
-      one = tf.tensor_scatter_nd_update(
-          one,
-          [[0]],
-          [tf.constant(1.0, dtype=tf.complex64)]
-      )
-
-      return self._normalize(one - a)
-
-
   def negation_batch(self, a: tf.Tensor) -> tf.Tensor:
       """
       Batch fuzzy negation: NOT(a) = 1 - a
@@ -85,18 +68,6 @@ class FuzzyFourierSetMixin(FourierPDF):
       return self._normalize_batch(ones - a)
 
 
-  def intersection(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
-      """
-      Fuzzy intersection using product (min approximation).
-      a, b: shape (kernel_size,)
-      Returns: shape (kernel_size,)
-      """
-      result = self._convolve(a, b)
-      if normalize:
-          result = self._normalize(result)
-      return result
-
-
   def intersection_batch(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
       """
       Batch fuzzy intersection using product.
@@ -111,19 +82,6 @@ class FuzzyFourierSetMixin(FourierPDF):
       return result
 
 
-  def union(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
-      """
-      Fuzzy union: a + b - a*b
-      a, b: shape (kernel_size,)
-      Returns: shape (kernel_size,)
-      """
-      convolved = self.intersection(a, b)
-      result = a + b - convolved
-      if normalize:
-          result = self._normalize(result)
-      return result
-
-
   def union_batch(self, a: tf.Tensor, b: tf.Tensor, normalize: bool = True) -> tf.Tensor:
       """
       Batch fuzzy union: a + b - a*b
@@ -132,7 +90,7 @@ class FuzzyFourierSetMixin(FourierPDF):
       """
       if len(tf.shape(a)) != 2:
           raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-      convolved = self.intersection_batch(a, b)
+      convolved = self._convolve_batch(a, b)
       result = a + b - convolved
       if normalize:
           result = self._normalize_batch(result)
