@@ -120,7 +120,7 @@ class FourierPDF:
         return cdf_lb_ub[:, 1] - cdf_lb_ub[:, 0]
 
 
-    def _normalize_batch(self, a: tf.Tensor, global_npsd:bool=False) -> tf.Tensor:
+    def _normalize_batch(self, a: tf.Tensor) -> tf.Tensor:
         """
         Batch normalization of probability density functions.
         Returns Normalized Power Spectral Densities (NPSD) of input pdfs
@@ -136,16 +136,8 @@ class FourierPDF:
         
         # norms = tf.math.reduce_sum(tf.abs(a)**2, axis=1)
         norms = self._integrate_batch(a)
-
-        # if we want to normalize against the global power spectral densities
-        #   default is just component-wise power spectra normalization
-        if global_npsd:
-            # aggregate power spectral densities
-            norms = tf.math.reduce_sum(norms, axis=0)
-            # broadcast it to use with 'a'
-            norms = tf.broadcast_to(norms, tf.shape(a)[0])
-        
         norms = tf.broadcast_to(norms[:, None], tf.shape(a))
+
         return a / norms
 
 

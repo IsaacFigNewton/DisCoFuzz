@@ -93,12 +93,11 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 return 1-np.log1p(w1_dist)
             
             case SIMILARITY_METRICS.W2:
-                # get UNnormalized power density spectra
-                #   unlike the Calavares paper, the NPSD turns out to be unhelpful for word embeddings
-                a = self._normalize_batch(a, global_npsd=True).numpy()
-                b = self._normalize_batch(b, global_npsd=True).numpy()
-                # a = tf.abs(a).numpy()
-                # b = tf.abs(b).numpy()
+                # get NPSDs like in Cazelles paper
+                a = self._normalize_batch(a)
+                b = self._normalize_batch(b)
+                a = tf.abs(a).numpy()
+                b = tf.abs(b).numpy()
                 freqs = tf.range(0, self.kernel_size, dtype=tf.float32)
                 u, v = np.meshgrid(freqs, freqs)
 
