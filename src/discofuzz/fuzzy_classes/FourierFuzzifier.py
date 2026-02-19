@@ -93,7 +93,6 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 return 1-np.log1p(w1_dist)
             
             case SIMILARITY_METRICS.W2:
-                # get NPSDs like in Cazelles paper
                 a = self._normalize_batch(a)
                 b = self._normalize_batch(b)
                 a = tf.abs(a).numpy()
