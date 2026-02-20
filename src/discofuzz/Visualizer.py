@@ -31,13 +31,12 @@ class Visualizer:
 
     def _get_first_two_components(self, a):
         if a.ndim != 2:
-            raise ValueError(f"Expected fuzzy_sample shape (2, K); got {fuzzy_sample.shape}")
+            raise ValueError(f"Expected shape of a to be (2, K); got {a.shape}")
 
         x = np.linspace(0.0, 1.0, tf.shape(a)[1], endpoint=False)
         fx = a[0, :].numpy()
         fy = a[1, :].numpy()
         H = np.outer(fx, fy)
-        print(H.shape)
         return x, fx, fy, H
 
 
@@ -48,16 +47,16 @@ class Visualizer:
                 fx_vals = fx.real
                 fy_vals = fy.real
                 label = "Re"
-            case "imag":
+            case "imaginary":
                 data2d = H.imag
                 fx_vals = fx.imag
                 fy_vals = fy.imag
                 label = "Im"
             case "magnitude":
-                data2d = np.abs(H)
-                fx_vals = np.abs(fx)
-                fy_vals = np.abs(fy)
-                label = "|H|"
+                data2d = np.abs(H)**2
+                fx_vals = np.abs(fx)**2
+                fy_vals = np.abs(fy)**2
+                label = "||H||"
             case "phase":
                 data2d = np.angle(H)
                 fx_vals = np.angle(fx)
@@ -163,7 +162,7 @@ class Visualizer:
             fig.tight_layout()
             plt.show()
     
-    def plot_rows(self, a):
+    def plot_rows(self, a, view: str = "magnitude",):
         """
         Given a numpy array `a` of shape (d, n), plot each row as a line
         on the same figure using the viridis colormap.
@@ -177,6 +176,19 @@ class Visualizer:
         cmap = plt.cm.viridis
         colors = cmap(np.linspace(0, 1, d))
 
+        match view:
+            case "magnitude":
+                a = np.abs(a)**2
+            case "real":
+                a = a.real
+            case "imaginary":
+                a = a.imagn
+            case "phase":
+                a = np.angle(a)
+            case _:
+                raise ValueError(f"Invalid view provided")
+                
+
         plt.figure(figsize=self.figsize)
         for i in range(d):
             plt.plot(
@@ -188,7 +200,7 @@ class Visualizer:
             )
 
         plt.xlabel("x")
-        plt.ylabel("F(x)")
+        plt.ylabel(f"{view.capitalize() + ' component ' if view in {'real', 'imaginary'} else ''} of F(x)")
         plt.show()
 
 
