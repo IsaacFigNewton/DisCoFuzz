@@ -122,7 +122,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 #   p(x) = integral(0, 1, |psi|^2)
                 # this metric is different from the Wasserstein-1 metric
                 #   only in that it squares psi prior to integration
-                p_x = self._integrate_batch(tf.cast(tf.abs(psi)*tf.abs(psi), dtype=tf.complex64))
+                p_x = self._integrate_batch(self.get_npsd_batch(psi))
                 
                 # do 1-log1p(w1**2) since distance is inversely proportional to distributions' similarities
                 return 1-tf.reduce_sum(tf.abs(p_x)).numpy()

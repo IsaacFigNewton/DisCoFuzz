@@ -120,8 +120,8 @@ class FourierPDF:
 
         bounds = tf.constant([lb, ub])
         cdf = self._get_cdf_batch(a)
-        cdf_mag = self.get_npsd_batch(cdf)
-        cdf_lb_ub = self.evaluate_batch(cdf_mag, x=bounds)
+        # cdf = integral(|pdf|^2)
+        cdf_lb_ub = self.evaluate_batch(self.get_npsd_batch(cdf), x=bounds)
         # integral is just cdf evaluated at 1 - cdf evaluated at 0
         return cdf_lb_ub[:, 1] - cdf_lb_ub[:, 0]
 
@@ -143,7 +143,6 @@ class FourierPDF:
         # norms = tf.math.reduce_sum(tf.abs(a)**2, axis=1)
         norms = self._integrate_batch(a)
         norms = tf.broadcast_to(norms[:, None], tf.shape(a))
-
         return a / norms
 
 
@@ -164,26 +163,3 @@ class FourierPDF:
         C_fft = A_fft * B_fft
         C = tf.signal.ifft(C_fft)
         return tf.cast(C, tf.complex64)
-
-    def _convolve(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:
-        """
-        Single convolution helper.
-        a, b: shape (kernel_size,)
-        Returns: shape (kernel_size,)
-        """
-        a_batch = tf.expand_dims(a, axis=0)
-        b_batch = tf.expand_dims(b, axis=0)
-        result_batch = self._convolve_batch(a_batch, b_batch)
-        return tf.squeeze(result_batch, axis=0)
-
-
-    def _differentiate_batch(self, a: tf.Tensor) -> tf.Tensor:
-        """
-        Batch differentiation.
-        a: shape (batch_size, kernel_size)
-        Returns: shape (batch_size, kernel_size)
-        """
-        if len(tf.shape(a)) != 2:
-            raise ValueError(f"Input tensor must have shape (batch_size, kernel_size), received tensor of shape {tf.shape(a)}")
-
-        return a * 1j * self.k_values - tf.broadcast_to(self.sawtooth, tf.shape(a))
