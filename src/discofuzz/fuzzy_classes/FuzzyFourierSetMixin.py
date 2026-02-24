@@ -30,7 +30,6 @@ class FuzzyFourierSetMixin(FourierPDF):
         return self._normalize_batch(mu_c_k * self.fourier_coeffs)
 
 
-
   def fuzzify(self, component: float) -> tf.Tensor:
       """
       Convert a real-valued component to a Fourier series representation of a Gaussian.
@@ -66,13 +65,13 @@ class FuzzyFourierSetMixin(FourierPDF):
             updates
         )
 
-        # get a's cdf
-        cdf_a = self._get_cdf_batch(a)
-        neg_a = self._normalize_batch(ones - cdf_a)
-        pdf_neg_a = self._differentiate_batch(neg_a)
-
-        # get normalized negation
-        return pdf_neg_a
+        # inverted PDF with rescaled period
+        inv_pdf = ones - self.get_npsd_batch(a) / (2 * np.pi)
+        # get rid of negative values of |inv_pdf| by diminishing them to 0
+        non_negative_series = tf.exp(-1 * a) * inv_pdf
+        # renormalize
+        neg_a = self._normalize_batch(non_negative_series)
+        return neg_a
 
 
   def intersection_batch(self, a: tf.Tensor, b: tf.Tensor) -> tf.Tensor:

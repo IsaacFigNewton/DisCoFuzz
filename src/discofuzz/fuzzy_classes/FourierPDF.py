@@ -33,6 +33,11 @@ class FourierPDF:
             axis=0
         )
 
+
+    def get_npsd_batch(self, a: tf.Tensor) -> tf.Tensor:
+        return tf.cast(tf.abs(a)**2, dtype=tf.complex64)
+
+
     def evaluate_batch(self,
             a: tf.Tensor,
             resolution: int = 200,
