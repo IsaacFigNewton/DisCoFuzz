@@ -178,54 +178,6 @@ class EvalHarness:
         return pd.concat([llm_sent_baseline_df, llm_tok_baseline_df]+normed_sims_dfs, axis=1,)
 
 
-    def visualize_similarities(self, X: pd.DataFrame, dimensionality:int):
-        # Create subplots for each similarity metric
-        fig, axes = plt.subplots(
-            1,
-            len(self.sim_metrics),
-            figsize=(8*len(self.sim_metrics), 6)
-        )
-        if len(self.sim_metrics) == 1:
-            axes = [axes]
-
-        for metric_idx, sim_metric in enumerate(self.sim_metrics):
-            ax = axes[metric_idx]
-            
-            # Get columns for this metric
-            metric_cols = [
-                col
-                for col in X.columns
-                if (
-                    "fuzzy_" in col\
-                    and sim_metric.value in col\
-                    and str(dimensionality-1) in col
-                )
-            ]
-            cmap = plt.get_cmap("viridis")
-            colors = cmap(np.linspace(0, 1, len(metric_cols)))
-            baseline_col = fmt_dim_reduc_sim_col("baseline_sent_cos", dimensionality-1)
-
-            for i, col in enumerate(metric_cols):
-                label = col.replace(f"fuzzy_", "").replace(f"_{sim_metric.value}_sim_components={dimensionality-1}", "")
-                ax.scatter(
-                    x=X[baseline_col],
-                    y=X[col],
-                    color=colors[i],
-                    label=label,
-                    alpha=0.6
-                )
-            
-            ax.set_xlabel("sentence embedding cosine similarity", fontsize=12)
-            ax.set_ylabel(f"{sim_metric.value} fuzzy compositional similarity", fontsize=12)
-            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-            # ax.set_yscale("log")
-            ax.set_title(f"Sentence Embedding vs. Fuzzy Compositional Similarity ({sim_metric.value})", fontsize=14)
-            ax.grid(alpha=0.3)
-
-        plt.tight_layout()
-        plt.show()
-
-
     def classify_similarities(self, X: pd.DataFrame):
         y_pred = pd.DataFrame()
         for c in X.columns:
@@ -234,12 +186,145 @@ class EvalHarness:
         return y_pred
 
 
+    def _get_baselines(self, scores: pd.DataFrame):
+        baselines = dict()
+        for i, row in scores.iterrows():
+            if not row["fuzzy"]:
+                # print(row)
+                baselines[row['model']] = {
+                    'accuracy': row['accuracy'] if len(row) > 0 else None,
+                    'precision': row['precision'] if len(row) > 0 else None,
+                    'recall': row['recall'] if len(row) > 0 else None,
+                    'f1_score': row['f1_score'] if len(row) > 0 else None
+                }
+        return baselines
+
+
+    def score(self,
+            X: pd.DataFrame,
+            y: pd.Series,
+            plot: bool = True
+        ) -> pd.DataFrame:
+        # Create evaluation metrics dataframe for ALL similarity metrics
+        metrics_data = []
+        for col in X.columns:
+            if col == "is_related":
+                continue
+            y_pred = X[col].astype(int)
+            params = parse_params_from_str(col)
+            metrics = {
+                'accuracy':             accuracy_score(y, y_pred),
+                'precision':            precision_score(y, y_pred, zero_division=0),
+                'recall':               recall_score(y, y_pred, zero_division=0),
+                'f1_score':             f1_score(y, y_pred, zero_division=0)
+            }
+            params.update(metrics)
+            metrics_data.append(params)
+
+        scores = pd.DataFrame(metrics_data)
+        scores = scores.sort_values(
+            ['f1_score', 'similarity_metric', ],
+            ascending=[False, True]
+        ).reset_index(drop=True)
+
+        return scores
+
+
+    def visualize_similarities(self, X: pd.DataFrame, dimensionality: int):
+        # --- Grid layout (2 columns, as many rows as needed) ---
+        n = len(self.sim_metrics)
+        ncols = 2
+        nrows = int(np.ceil(n / ncols))
+
+        fig, axes = plt.subplots(
+            nrows,
+            ncols,
+            figsize=(5 * ncols, 4 * nrows),
+            sharey=True
+        )
+        axes = np.atleast_2d(axes)  # always 2D for consistent indexing
+        axes_flat = axes.flatten()
+
+        baseline_col = fmt_dim_reduc_sim_col("baseline_sent_cos", dimensionality - 1)
+
+        for metric_idx, sim_metric in enumerate(self.sim_metrics):
+            ax = axes_flat[metric_idx]
+
+            # Get columns for this metric
+            metric_cols = [
+                col
+                for col in X.columns
+                if (
+                    "fuzzy_" in col
+                    and sim_metric.value in col
+                    and str(dimensionality - 1) in col
+                )
+            ]
+
+            cmap = plt.get_cmap("viridis")
+            colors = cmap(np.linspace(0, 1, len(metric_cols))) if len(metric_cols) else []
+
+            handles, labels = [], []
+            for i, col in enumerate(metric_cols):
+                label = col.replace("fuzzy_", "").replace(
+                    f"_{sim_metric.value}_sim_components={dimensionality - 1}", ""
+                )
+                labels.append(label)
+                handles.append(ax.scatter(
+                    x=X[baseline_col],
+                    y=X[col],
+                    color=colors[i],
+                    label=label,
+                    alpha=0.6
+                ))
+
+
+            # Only show y-axis labels/ticks for the leftmost column
+            col_pos = metric_idx % ncols
+            row_pos = metric_idx > 1
+            if col_pos == 0:
+                ax.set_ylabel("fuzzy compositional similarity", fontsize=12)
+            else:
+                ax.tick_params(axis="y", left=False, labelleft=False)
+                ax.set_ylabel("")
+            # only show x-axis labels/ticks for bottom row
+            if row_pos:
+                ax.set_xlabel("sentence embedding cosine similarity", fontsize=12)
+            else:
+                ax.tick_params(axis="x", bottom=False, labelbottom=False)
+                ax.set_xlabel("")
+
+            ax.set_title(
+                f"Sentence Embedding vs. {sim_metric.value}",
+                fontsize=14
+            )
+            ax.grid(alpha=0.3)
+
+        # Hide any unused subplots (when n is not a multiple of ncols)
+        for j in range(n, len(axes_flat)):
+            axes_flat[j].set_visible(False)
+
+        # --- Place legend centered below all plots ---
+        fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.02),
+            ncol=min(len(labels), 5),
+            fontsize=9
+        )
+
+        # Leave space for bottom legend
+        plt.tight_layout(rect=[0, 0.08, 1, 1])
+        plt.show()
+    
+
     def plot_confusion_matrices(self,
             X: pd.DataFrame,
             y: pd.Series,
             dimensionality: int,
             n_cols: int = 2,
-        ):    
+        ):
         # Create confusion matrices for all metrics
         for sim_metric in self.sim_metrics:
             # filter to just the columns with the current sim metric
@@ -278,95 +363,6 @@ class EvalHarness:
 
             plt.tight_layout()
             plt.show()
-
-
-    def _get_baselines(self, scores: pd.DataFrame):
-        baselines = dict()
-        for i, row in scores.iterrows():
-            if not row["fuzzy"]:
-                # print(row)
-                baselines[row['model']] = {
-                    'accuracy': row['accuracy'] if len(row) > 0 else None,
-                    'precision': row['precision'] if len(row) > 0 else None,
-                    'recall': row['recall'] if len(row) > 0 else None,
-                    'f1_score': row['f1_score'] if len(row) > 0 else None
-                }
-        return baselines
-
-
-    def visualize_scores(self, scores: pd.DataFrame, dimensionality:int):
-        # Create combined bar graphs with different colors for each similarity metric
-        metric_names = ['accuracy', 'precision', 'recall', 'f1_score']
-
-        # Get baseline values
-        baselines = self._get_baselines(scores)
-
-        # Create one figure with 4 subplots (one for each metric)
-        fig, axes = plt.subplots(2, 2, figsize=(20, 16))
-        fig.suptitle('Evaluation Metrics by Strategy and Similarity Metric', fontsize=18, y=0.995)
-
-        # Create a viridis color map for similarity metrics
-        cmap = plt.cm.viridis
-        sim_metric_colors = {
-            sim_metric: cmap(i / max(len(self.sim_metrics) - 1, 1))
-            for i, sim_metric in enumerate(self.sim_metrics)
-        }
-
-        for idx, metric in enumerate(metric_names):
-            ax = axes[idx // 2, idx % 2]
-            
-            # Prepare data for grouped bar chart
-            bar_width = 0.25
-            x_pos = np.arange(len(self.composition_strategies))
-            
-            # Plot bars for each similarity metric
-            for i, sim_metric in enumerate(self.sim_metrics):
-                values = []
-                for s in self.composition_strategies:
-                    strat_mask = (scores['strategy'] == s)\
-                                    & (scores['similarity_metric'] == sim_metric.value)#\
-                                    # & (scores['n_components'] == dimensionality-1)
-                    metric_value = float(scores[strat_mask][metric].iloc[0])
-                    values.append(metric_value)
-                    
-                
-                # Plot bars with offset
-                offset = (i - len(self.sim_metrics)/2 + 0.5) * bar_width
-                bars = ax.barh(
-                    x_pos + offset,
-                    values,
-                    bar_width,
-                    label=sim_metric.value,
-                    color=sim_metric_colors[sim_metric],
-                    alpha=0.8
-                )
-
-            
-            # Add baseline lines
-            for i, (label, values) in enumerate(baselines.items()):
-                color = cmap(i / max(len(baselines) - 1, 1))
-                color = tuple([0.7*v for v in color])
-                if values[metric] is not None:
-                    ax.axvline(
-                        x=values[metric],
-                        color=color,
-                        linestyle=':',
-                        linewidth=2,
-                        label=label,
-                        alpha=0.8,
-                        zorder=0
-                    )
-            
-            ax.set_yticks(x_pos)
-            ax.set_yticklabels([s.replace('_', ' ') for s in self.composition_strategies], fontsize=9)
-            ax.set_xlabel(metric.capitalize(), fontsize=12)
-            ax.set_ylabel('Strategy', fontsize=12)
-            ax.set_xlim(0, 1.0)
-            ax.grid(axis='x', alpha=0.3)
-            ax.legend(loc='lower right', fontsize=9)
-
-        plt.tight_layout()
-        plt.show()
 
 
     def visualize_f1_by_metric_n_components(self, df: pd.DataFrame, strategies=None):
@@ -419,10 +415,10 @@ class EvalHarness:
         if len(metrics) != 4:
             print(f"Warning: Found {len(metrics)} similarity metrics (expected 4).")
 
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharex=True, sharey=True)
+        fig, axes = plt.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
         axes = axes.flatten()
 
-        for ax, metric in zip(axes, metrics):
+        for idx, (ax, metric) in enumerate(zip(axes, metrics)):
             metric_data = dmain_grouped[dmain_grouped['similarity_metric'] == metric]
 
             # Plot requested strategies for this metric
@@ -443,12 +439,19 @@ class EvalHarness:
                 # If missing, still keep plots working
                 pass
 
-            ax.set_title(f"Similarity Metric: {metric}")
+            # Show y-axis only for leftmost column
+            col_position = idx % 2
+            if col_position == 0:
+                ax.set_ylabel("F1 Score")
+            else:
+                ax.tick_params(axis='y', left=False, labelleft=False)
+                ax.set_ylabel('')
+            
+            ax.set_title(metric)
             ax.set_xlabel("n_components")
-            ax.set_ylabel("F1 Score")
             ax.grid(True)
 
-        # Single legend outside (collect from all axes to ensure baselines appear)
+        # Single legend underneath (collect from all axes to ensure baselines appear)
         handles, labels = [], []
         for ax in axes[:len(metrics)]:
             h, l = ax.get_legend_handles_labels()
@@ -457,36 +460,140 @@ class EvalHarness:
                     handles.append(hh)
                     labels.append(ll)
 
-        fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.18, 0.5))
-        plt.tight_layout(rect=[0, 0, 0.85, 1])
+        # Place legend centered below the plots
+        fig.legend(
+            handles,
+            labels,
+            loc='lower center',
+            bbox_to_anchor=(0.5, -0.02),
+            ncol=min(len(labels), 3)  # spread legend horizontally
+        )
+
+        # Leave space at bottom for legend
+        plt.tight_layout(rect=[0, 0.08, 1, 1])
         plt.show()
+        
 
+    def visualize_scores(self, scores: pd.DataFrame, dimensionality: int, only_acc_f1: bool = True):
+        """
+        Visualize evaluation metrics.
 
-    def score(self,
-            X: pd.DataFrame,
-            y: pd.Series,
-            plot: bool = True
-        ) -> pd.DataFrame:
-        # Create evaluation metrics dataframe for ALL similarity metrics
-        metrics_data = []
-        for col in X.columns:
-            if col == "is_related":
-                continue
-            y_pred = X[col].astype(int)
-            params = parse_params_from_str(col)
-            metrics = {
-                'accuracy':             accuracy_score(y, y_pred),
-                'precision':            precision_score(y, y_pred, zero_division=0),
-                'recall':               recall_score(y, y_pred, zero_division=0),
-                'f1_score':             f1_score(y, y_pred, zero_division=0)
-            }
-            params.update(metrics)
-            metrics_data.append(params)
+        Parameters
+        ----------
+        scores : pd.DataFrame
+        dimensionality : int
+        only_acc_f1 : bool
+            If True, only accuracy and f1_score are shown.
+            If False (default), accuracy, precision, recall and f1_score are shown.
+        """
 
-        scores = pd.DataFrame(metrics_data)
-        scores = scores.sort_values(
-            ['f1_score', 'similarity_metric', ],
-            ascending=[False, True]
-        ).reset_index(drop=True)
+        # --- Select metrics ---
+        if only_acc_f1:
+            metric_names = ['accuracy', 'f1_score']
+            fig, axes = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+            axes = np.array(axes).reshape(1, 2)
+        else:
+            metric_names = ['accuracy', 'precision', 'recall', 'f1_score']
+            fig, axes = plt.subplots(2, 2, figsize=(20, 16), sharey=True)
 
-        return scores
+        fig.suptitle(
+            'Evaluation Metrics by Strategy and Similarity Metric',
+            fontsize=18,
+            y=0.98
+        )
+
+        baselines = self._get_baselines(scores)
+
+        cmap = plt.cm.viridis
+        sim_metric_colors = {
+            sim_metric: cmap(i / max(len(self.sim_metrics) - 1, 1))
+            for i, sim_metric in enumerate(self.sim_metrics)
+        }
+
+        axes_flat = axes.flatten()
+
+        for idx, metric in enumerate(metric_names):
+            ax = axes_flat[idx]
+
+            bar_width = 0.25
+            x_pos = np.arange(len(self.composition_strategies))
+
+            # --- Bars ---
+            for i, sim_metric in enumerate(self.sim_metrics):
+                values = []
+                for s in self.composition_strategies:
+                    strat_mask = (
+                        (scores['strategy'] == s) &
+                        (scores['similarity_metric'] == sim_metric.value)
+                    )
+                    metric_value = float(scores[strat_mask][metric].iloc[0])
+                    values.append(metric_value)
+
+                offset = (i - len(self.sim_metrics)/2 + 0.5) * bar_width
+
+                ax.barh(
+                    x_pos + offset,
+                    values,
+                    bar_width,
+                    label=sim_metric.value,
+                    color=sim_metric_colors[sim_metric],
+                    alpha=0.8
+                )
+
+            # --- Baselines ---
+            for i, (label, values) in enumerate(baselines.items()):
+                color = cmap(i / max(len(baselines) - 1, 1))
+                color = tuple([0.7 * v for v in color])
+                if values[metric] is not None:
+                    ax.axvline(
+                        x=values[metric],
+                        color=color,
+                        linestyle=':',
+                        linewidth=2,
+                        label=label,
+                        alpha=0.8,
+                        zorder=0
+                    )
+
+            ax.set_yticks(x_pos)
+
+            # Show y-axis only for leftmost column
+            ncols = axes.shape[1]
+            col_position = idx % ncols
+
+            if col_position == 0:
+                ax.set_yticklabels(
+                    [s.replace('_', ' ') for s in self.composition_strategies],
+                    fontsize=9
+                )
+                ax.set_ylabel('Strategy', fontsize=12)
+            else:
+                ax.tick_params(axis='y', left=False, labelleft=False)
+                ax.set_ylabel('')
+
+            ax.set_xlabel(metric.capitalize(), fontsize=12)
+            ax.set_xlim(0, 1.0)
+            ax.grid(axis='x', alpha=0.3)
+
+        # --- Shared legend underneath ---
+        handles, labels = [], []
+        for ax in axes_flat[:len(metric_names)]:
+            h, l = ax.get_legend_handles_labels()
+            for hh, ll in zip(h, l):
+                if ll not in labels:
+                    handles.append(hh)
+                    labels.append(ll)
+
+        fig.legend(
+            handles,
+            labels,
+            loc='lower center',
+            bbox_to_anchor=(0.5, -0.02),
+            ncol=min(len(labels), 3),
+            fontsize=10
+        )
+
+        bottom_space = 0.12 if only_acc_f1 else 0.08
+        plt.tight_layout(rect=[0, bottom_space, 1, 0.95])
+
+        plt.show()
