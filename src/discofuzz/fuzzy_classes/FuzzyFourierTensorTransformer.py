@@ -1,6 +1,7 @@
 from typing import List
 import numpy as np
 import tensorflow as tf
+from ..constants import SIMILARITY_METRICS
 from .FourierFuzzifier import FourierFuzzifier
 
 class FuzzyFourierTensorTransformer:
@@ -113,7 +114,7 @@ class FuzzyFourierTensorTransformer:
     def similarity(self,
             A: tf.Tensor,
             B: tf.Tensor,
-            method: str
+            method: SIMILARITY_METRICS
         ) -> float:
         """
         Vectorized similarity computation.

@@ -1,4 +1,6 @@
 import pandas as pd
+import tensorflow as tf
+import keras
 # Import DisCoFuzz package classes
 from discofuzz.constants import *
 
@@ -27,6 +29,11 @@ DEFAULTS = {
 def get_fuzzy_emb_col(s: str, i: int):
     return f"sent_{i}_fuzzy_{s}"
 
-def normalize_about_median(data: pd.Series) -> pd.Series:
-    data = (data - data.min()) / (data.max() - data.min())
-    return data - data.median()
+def normalize_about_median(data: tf.Tensor) -> tf.Tensor:
+    min = tf.math.reduce_min(data, axis=0, keepdims=True)
+    min = tf.broadcast_to(min, tf.shape(data))
+    max = tf.math.reduce_max(data, axis=0, keepdims=True)
+    max = tf.broadcast_to(max, tf.shape(data))
+    med = keras.ops.median(data, axis=0, keepdims=True)
+    med = tf.broadcast_to(med, tf.shape(data))
+    return (data - med) / (max - min)

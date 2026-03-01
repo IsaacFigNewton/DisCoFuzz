@@ -33,7 +33,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
 
 
     
-    def similarity(self, a: tf.Tensor, b: tf.Tensor, method: str) -> Union[float, np.ndarray]:
+    def similarity(self, a: tf.Tensor, b: tf.Tensor, method: SIMILARITY_METRICS) -> Union[float, np.ndarray]:
         """
         Compute similarity as ot similarity in frequency domain.
         a, b: shape (kernel_size,)
@@ -57,8 +57,8 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
     def similarity_batch(self,
             a: tf.Tensor,
             b: tf.Tensor,
-            method: str,
-        ) -> np.ndarray:
+            method: SIMILARITY_METRICS,
+        ) -> float:
         """
         Batch computation of pairwise similarities.
         a, b: shape (batch_size, kernel_size)

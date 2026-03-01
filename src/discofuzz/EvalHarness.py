@@ -100,16 +100,16 @@ class EvalHarness:
             self.fuzzy_tok_embeddings.append(fuzzified_tok_embeddings)
     
 
-    def get_sbert_sentence_baseline(self) -> pd.Series:
+    def get_sbert_sentence_baseline(self) -> tf.Tensor:
         # Calculate similarity - returns diagonal of similarity matrix
         cos_sims = cosine_similarity(self.sent_embeddings[0], self.sent_embeddings[1])
-        return normalize_about_median(pd.Series(np.diag(cos_sims)))
+        return normalize_about_median(tf.constant(np.diag(cos_sims)))
     
 
-    def get_sbert_token_baseline(self) -> pd.Series:
+    def get_sbert_token_baseline(self) -> tf.Tensor:
         # Add SBERT token-level baseline - returns diagonal of similarity matrix
         cos_sims = cosine_similarity(self.tok_embeddings[0], self.tok_embeddings[1])
-        return normalize_about_median(pd.Series(np.diag(cos_sims)))
+        return normalize_about_median(tf.constant(np.diag(cos_sims)))
     
 
     def get_similarities(self, X: pd.DataFrame):
@@ -138,11 +138,11 @@ class EvalHarness:
                 
                 col = f"fuzzy_{s}_{sim_metric.value}_sim"
                 # normalize similarity scores
-                sims_df[col] = normalize_about_median(pd.Series(sims))
+                sims_df[col] = pd.Series(normalize_about_median(tf.constant(sims)))
         
         # get baseline embeddings' (non-fuzzy) cosine similarities
-        sims_df["baseline_sent_cos_sim"] = normalize_about_median(self.get_sbert_sentence_baseline())
-        sims_df["baseline_tok_cos_sim"] = normalize_about_median(self.get_sbert_token_baseline())
+        sims_df["baseline_sent_cos_sim"] = pd.Series(self.get_sbert_sentence_baseline())
+        sims_df["baseline_tok_cos_sim"] = pd.Series(self.get_sbert_token_baseline())
         
         return sims_df
 
@@ -175,7 +175,7 @@ class EvalHarness:
                     y=X[col],
                     color=colors[i],
                     label=col.replace(f"fuzzy_", "").replace(f"_{sim_metric.value}_sim", ""),
-                    alpha=0.5
+                    alpha=0.6
                 )
             
             ax.set_xlabel("sentence embedding cosine similarity", fontsize=12)
