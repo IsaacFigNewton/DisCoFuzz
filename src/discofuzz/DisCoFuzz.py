@@ -133,7 +133,7 @@ class DisCoFuzz:
         composer = SpacyDependencyComposer(strategy, self.fuzzifier)
         for i in [1, 2]:
             # compose embeddings
-            X[get_fuzzy_emb_col(strategy, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
+            X[fmt_fuzzy_emb_col(strategy, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
         
         return X
         
@@ -149,6 +149,6 @@ class DisCoFuzz:
             composer = SpacyDependencyComposer(s, self.fuzzifier)
             for i in [1, 2]:
                 # compose embeddings
-                X[get_fuzzy_emb_col(s, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
+                X[fmt_fuzzy_emb_col(s, i)] = tup_emb_args[i-1].apply(lambda x: composer(x[0], x[1]))
         
         return X

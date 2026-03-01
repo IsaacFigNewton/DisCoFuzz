@@ -111,23 +111,5 @@ class FuzzyFourierTensorTransformer:
         # Normalize the final result
         return self.fuzzifier._normalize_batch(result)
 
-    def similarity(self,
-            A: tf.Tensor,
-            B: tf.Tensor,
-            method: SIMILARITY_METRICS
-        ) -> float:
-        """
-        Vectorized similarity computation.
-        A, B: shape (d,kernel_size)
-        Returns: scalar similarity between the normalized power spectral densities of A, B
-        """
-        
-        if A is None or B is None:
-            raise ValueError(f"Inputs must be tensor, got None")
-        if not len(A.shape) == 2:
-          print(A)
-          raise ValueError(f"A must be rank 2 tensor. Expected A.shape == 2, but got A.shape == {A.shape}")
-        if not len(B.shape) == 2:
-          raise ValueError(f"B must be rank 2 tensor. Expected A.shape == 2, but got A.shape == {B.shape}")
-
+    def similarity(self, A: tf.Tensor, B: tf.Tensor, method: SIMILARITY_METRICS) -> tf.Tensor:
         return self.fuzzifier.similarity_batch(A, B, method)

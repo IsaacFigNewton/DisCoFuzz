@@ -14,7 +14,6 @@ from sklearn.metrics import (
     f1_score,
     confusion_matrix
 )
-from sklearn.metrics.pairwise import cosine_similarity
 
 import seaborn as sns
 import wget as wget
@@ -54,9 +53,9 @@ class EvalHarness:
         self.embedding_model = embedding_model
         self.spacy_model = spacy_model
         self.fuzzifier = fuzzifier
-        self.sent_embeddings: List[np.ndarray] = list()
+        self.sent_embeddings = list()
+        self.tok_embeddings = list()
         self.fuzzy_sent_embeddings: List[pd.Series] = list()
-        self.tok_embeddings: List[np.ndarray] = list()
         self.fuzzy_tok_embeddings: List[pd.Series] = list()
 
     
@@ -93,61 +92,93 @@ class EvalHarness:
         # get fuzzy baselines
         for i in [1, 2]:
             # get fuzzified sentence embedding baseline
-            fuzzified_sent_embeddings = pd.Series([np.array(emb) for emb in self.sent_embeddings[i-1]]).apply(self.fuzzifier.fuzzify)
+            sent_embeddings = pd.Series([np.array(emb) for emb in self.sent_embeddings[i-1]])
+            fuzzified_sent_embeddings = sent_embeddings.apply(self.fuzzifier.fuzzify)
             self.fuzzy_sent_embeddings.append(fuzzified_sent_embeddings)
             # get fuzzified mean token embedding baseline
-            fuzzified_tok_embeddings = pd.Series([np.array(emb) for emb in self.tok_embeddings[i-1]]).apply(self.fuzzifier.fuzzify)
+            tok_embeddings = pd.Series([np.array(emb) for emb in self.tok_embeddings[i-1]])
+            fuzzified_tok_embeddings = tok_embeddings.apply(self.fuzzifier.fuzzify)
             self.fuzzy_tok_embeddings.append(fuzzified_tok_embeddings)
-    
+        
+        # convert to tensors for easier processing later
+        self.sent_embeddings = tf.convert_to_tensor(self.sent_embeddings)
+        self.tok_embeddings = tf.convert_to_tensor(self.tok_embeddings)
+
+
+    def _cosine_similarity_all_prefixes(self, a: tf.Tensor, b: tf.Tensor):
+        """
+        Computes cosine similarities between 'a' and 'b'
+        for the first n components in [1, d].
+
+        Args:
+            a: Tensor of shape (batch_size, d)
+            b: Tensor of shape (batch_size, d)
+            eps: Small constant for numerical stability
+
+        Returns:
+            Tensor of shape (batch_size, d), where:
+            output[:, n-1] = cosine similarities of all samples using first n components
+        """
+        print(a.shape)
+        # Prefix dot products
+        prefix_dot = tf.cumsum(a * b, axis=1)
+        # Prefix norms
+        prefix_norm_a = tf.sqrt(tf.cumsum(a**2, axis=1))
+        prefix_norm_b = tf.sqrt(tf.cumsum(b**2, axis=1))
+        # Cosine similarity for each prefix
+        cosine_sim = prefix_dot / (prefix_norm_a * prefix_norm_b)
+        return cosine_sim
 
     def get_sbert_sentence_baseline(self) -> tf.Tensor:
-        # Calculate similarity - returns diagonal of similarity matrix
-        cos_sims = cosine_similarity(self.sent_embeddings[0], self.sent_embeddings[1])
-        return normalize_about_median(tf.constant(np.diag(cos_sims)))
+        cos_sims = self._cosine_similarity_all_prefixes(self.sent_embeddings[0], self.sent_embeddings[1])
+        # normalize the similarities evaluated within each dim-reduced subspace
+        return normalize_about_median(cos_sims, axis=0)
     
 
     def get_sbert_token_baseline(self) -> tf.Tensor:
-        # Add SBERT token-level baseline - returns diagonal of similarity matrix
-        cos_sims = cosine_similarity(self.tok_embeddings[0], self.tok_embeddings[1])
-        return normalize_about_median(tf.constant(np.diag(cos_sims)))
+        cos_sims = self._cosine_similarity_all_prefixes(self.tok_embeddings[0], self.tok_embeddings[1])
+        # normalize the similarities evaluated within each dim-reduced subspace
+        return normalize_about_median(cos_sims, axis=0)
     
 
     def get_similarities(self, X: pd.DataFrame):
         # get fuzzified baseline embeddings
         for i in [1, 2]:
-            X[get_fuzzy_emb_col("baseline_sent", i)] = self.fuzzy_sent_embeddings[i-1]
-            X[get_fuzzy_emb_col("baseline_tok", i)] = self.fuzzy_tok_embeddings[i-1]
+            X[fmt_fuzzy_emb_col("baseline_sent", i)] = self.fuzzy_sent_embeddings[i-1]
+            X[fmt_fuzzy_emb_col("baseline_tok", i)] = self.fuzzy_tok_embeddings[i-1]
+
+        # get baseline embeddings' (non-fuzzy) cosine similarities
+        llm_sent_baseline_df = pd.DataFrame(self.get_sbert_sentence_baseline().numpy())
+        llm_sent_baseline_df.columns = get_dim_reduc_sim_cols(llm_sent_baseline_df, "baseline_sent_cos")
+        llm_tok_baseline_df = pd.DataFrame(self.get_sbert_token_baseline().numpy())
+        llm_tok_baseline_df.columns = get_dim_reduc_sim_cols(llm_tok_baseline_df, "baseline_tok_cos")
 
         # get embedding similarities across all metrics
-        sims_df = pd.DataFrame()
+        normed_sims_dfs = list()
         for sim_metric in self.sim_metrics:
             print(f"\n\t=== Computing similarities with {sim_metric.value} metric ===")
             for s in self.composition_strategies:
                 print(f"\t\tGetting compositional embedding relatedness scores for {s} approach...")
-                sims = list()
-                for i, row in X.iterrows():
-                    try:
-                        sims.append(self.fuzzifier.similarity(
-                            row[get_fuzzy_emb_col(s, 1)],
-                            row[get_fuzzy_emb_col(s, 2)],
-                            method=sim_metric,
-                        ))
-                    except Exception as e:
-                        print(row)
-                        raise e
+                try:
+                    sims = self.fuzzifier.similarity(
+                        tf.convert_to_tensor(X[fmt_fuzzy_emb_col(s, 1)].tolist()),
+                        tf.convert_to_tensor(X[fmt_fuzzy_emb_col(s, 2)].tolist()),
+                        method=sim_metric,
+                    )
+                except Exception as e:
+                    raise e
                 
-                col = f"fuzzy_{s}_{sim_metric.value}_sim"
                 # normalize similarity scores
-                sims_df[col] = pd.Series(normalize_about_median(tf.constant(sims)))
+                # shape = (batch_size, n_components, kernel_size)
+                normalized_fuzzy_sims = normalize_about_median(tf.convert_to_tensor(sims), axis=0)
+                normed_fuzzy_sims_df = pd.DataFrame(normalized_fuzzy_sims.numpy())
+                normed_fuzzy_sims_df.columns = get_dim_reduc_sim_cols(normed_fuzzy_sims_df, fmt_fuzzy_sim_metric_col(s, sim_metric.value))
+                normed_sims_dfs.append(normed_fuzzy_sims_df)
         
-        # get baseline embeddings' (non-fuzzy) cosine similarities
-        sims_df["baseline_sent_cos_sim"] = pd.Series(self.get_sbert_sentence_baseline())
-        sims_df["baseline_tok_cos_sim"] = pd.Series(self.get_sbert_token_baseline())
-        
-        return sims_df
+        return pd.concat([llm_sent_baseline_df, llm_tok_baseline_df]+normed_sims_dfs, axis=1,)
 
 
-    def visualize_similarities(self, X: pd.DataFrame):
+    def visualize_similarities(self, X: pd.DataFrame, dimensionality:int):
         # Create subplots for each similarity metric
         fig, axes = plt.subplots(
             1,
@@ -164,17 +195,23 @@ class EvalHarness:
             metric_cols = [
                 col
                 for col in X.columns
-                if sim_metric.value in col
+                if (
+                    "fuzzy_" in col\
+                    and sim_metric.value in col\
+                    and str(dimensionality-1) in col
+                )
             ]
             cmap = plt.get_cmap("viridis")
             colors = cmap(np.linspace(0, 1, len(metric_cols)))
-            
+            baseline_col = fmt_dim_reduc_sim_col("baseline_sent_cos", dimensionality-1)
+
             for i, col in enumerate(metric_cols):
+                label = col.replace(f"fuzzy_", "").replace(f"_{sim_metric.value}_sim_components={dimensionality-1}", "")
                 ax.scatter(
-                    x=X["baseline_sent_cos_sim"],
+                    x=X[baseline_col],
                     y=X[col],
                     color=colors[i],
-                    label=col.replace(f"fuzzy_", "").replace(f"_{sim_metric.value}_sim", ""),
+                    label=label,
                     alpha=0.6
                 )
             
@@ -200,12 +237,17 @@ class EvalHarness:
     def plot_confusion_matrices(self,
             X: pd.DataFrame,
             y: pd.Series,
-            n_cols: int = 2
+            dimensionality: int,
+            n_cols: int = 2,
         ):    
         # Create confusion matrices for all metrics
         for sim_metric in self.sim_metrics:
             # filter to just the columns with the current sim metric
-            metric_cols = [c for c in X.columns if sim_metric.value in c]
+            metric_cols = [
+                c
+                for c in X.columns
+                if sim_metric.value in c and str(dimensionality-1) in c
+            ]
             # Calculate grid size
             n_rows = int(np.ceil(len(metric_cols) / n_cols))
             
@@ -229,7 +271,8 @@ class EvalHarness:
                     xticklabels=['Unrelated', 'Related'],
                     yticklabels=['Unrelated', 'Related']
                 )
-                plt.title(f'{col.replace(f"_{sim_metric.value}_sim_pred", "").replace("_", " ")}')
+                params = parse_params_from_str(col)
+                plt.title(f"{'fuzzy_' if params['fuzzy'] else ''}{params['strategy']}")
                 plt.xlabel('Predicted Label')
                 plt.ylabel('True Label')
 
@@ -239,9 +282,8 @@ class EvalHarness:
 
     def _get_baselines(self, scores: pd.DataFrame):
         baselines = dict()
-        baseline_inclusion_reqs = lambda x: "baseline_" in x and "fuzzy" not in x
         for i, row in scores.iterrows():
-            if baseline_inclusion_reqs(row['model']):
+            if not row["fuzzy"]:
                 # print(row)
                 baselines[row['model']] = {
                     'accuracy': row['accuracy'] if len(row) > 0 else None,
@@ -252,7 +294,7 @@ class EvalHarness:
         return baselines
 
 
-    def _visualize_scores(self, scores: pd.DataFrame):
+    def visualize_scores(self, scores: pd.DataFrame, dimensionality:int):
         # Create combined bar graphs with different colors for each similarity metric
         metric_names = ['accuracy', 'precision', 'recall', 'f1_score']
 
@@ -281,7 +323,9 @@ class EvalHarness:
             for i, sim_metric in enumerate(self.sim_metrics):
                 values = []
                 for s in self.composition_strategies:
-                    strat_mask = (scores['strategy'] == s) & (scores['similarity_metric'] == sim_metric.value)
+                    strat_mask = (scores['strategy'] == s)\
+                                    & (scores['similarity_metric'] == sim_metric.value)#\
+                                    # & (scores['n_components'] == dimensionality-1)
                     metric_value = float(scores[strat_mask][metric].iloc[0])
                     values.append(metric_value)
                     
@@ -325,6 +369,99 @@ class EvalHarness:
         plt.show()
 
 
+    def visualize_f1_by_metric_n_components(self, df: pd.DataFrame, strategies=None):
+        """
+        Creates 4 subplots (one per similarity_metric) plotting
+        F1 score vs n_components for each strategy, and adds the non-fuzzy
+        baseline_sent/baseline_tok cosine results to EVERY subplot.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Must contain columns:
+            ['strategy', 'similarity_metric', 'n_components', 'f1_score', 'fuzzy']
+
+        strategies : list or None
+            List of strategies to include (excluding the added baselines).
+            If None, all strategies are used.
+        """
+        required_cols = {'strategy', 'similarity_metric', 'n_components', 'f1_score', 'fuzzy'}
+        missing = required_cols - set(df.columns)
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+        # --- Pull non-fuzzy cosine baselines (baseline_sent, baseline_tok) ---
+        baseline_strats = ['baseline_sent', 'baseline_tok']
+        base = df[
+            (df['fuzzy'] == False) &
+            (df['similarity_metric'] == 'cos') &
+            (df['strategy'].isin(baseline_strats))
+        ].copy()
+
+        base_grouped = (
+            base.groupby(['strategy', 'n_components'], as_index=False)
+                .agg({'f1_score': 'mean'})
+                .sort_values(['strategy', 'n_components'])
+        )
+
+        # --- Main data (optionally filtered by strategies) ---
+        dmain = df.copy()
+        if strategies is not None:
+            dmain = dmain[dmain['strategy'].isin(strategies)]
+
+        dmain_grouped = (
+            dmain.groupby(['similarity_metric', 'strategy', 'n_components'], as_index=False)
+                .agg({'f1_score': 'mean'})
+                .sort_values(['similarity_metric', 'strategy', 'n_components'])
+        )
+
+        metrics = sorted(dmain_grouped['similarity_metric'].unique())
+        if len(metrics) != 4:
+            print(f"Warning: Found {len(metrics)} similarity metrics (expected 4).")
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharex=True, sharey=True)
+        axes = axes.flatten()
+
+        for ax, metric in zip(axes, metrics):
+            metric_data = dmain_grouped[dmain_grouped['similarity_metric'] == metric]
+
+            # Plot requested strategies for this metric
+            for strategy_name, group in metric_data.groupby('strategy'):
+                ax.plot(group['n_components'], group['f1_score'], marker='o', label=strategy_name)
+
+            # Add the non-fuzzy cosine baselines to every subplot
+            if not base_grouped.empty:
+                for bname, bgrp in base_grouped.groupby('strategy'):
+                    ax.plot(
+                        bgrp['n_components'],
+                        bgrp['f1_score'],
+                        marker='o',
+                        linestyle='--',
+                        label=f"{bname} (non-fuzzy, cos)"
+                    )
+            else:
+                # If missing, still keep plots working
+                pass
+
+            ax.set_title(f"Similarity Metric: {metric}")
+            ax.set_xlabel("n_components")
+            ax.set_ylabel("F1 Score")
+            ax.grid(True)
+
+        # Single legend outside (collect from all axes to ensure baselines appear)
+        handles, labels = [], []
+        for ax in axes[:len(metrics)]:
+            h, l = ax.get_legend_handles_labels()
+            for hh, ll in zip(h, l):
+                if ll not in labels:
+                    handles.append(hh)
+                    labels.append(ll)
+
+        fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.18, 0.5))
+        plt.tight_layout(rect=[0, 0, 0.85, 1])
+        plt.show()
+
+
     def score(self,
             X: pd.DataFrame,
             y: pd.Series,
@@ -336,20 +473,15 @@ class EvalHarness:
             if col == "is_related":
                 continue
             y_pred = X[col].astype(int)
-            
-            # Extract metric name from column
-            metric_name = col.replace("_sim_pred", "").split("_")[-1]
-            strategy = col.replace(f'_{metric_name}_sim_pred', '').replace('fuzzy_', '')
-            
-            metrics_data.append({
-                'strategy': strategy,
-                'similarity_metric': metric_name,
-                'model': col.replace('_pred', ''),
-                'accuracy': accuracy_score(y, y_pred),
-                'precision': precision_score(y, y_pred, zero_division=0),
-                'recall': recall_score(y, y_pred, zero_division=0),
-                'f1_score': f1_score(y, y_pred, zero_division=0)
-            })
+            params = parse_params_from_str(col)
+            metrics = {
+                'accuracy':             accuracy_score(y, y_pred),
+                'precision':            precision_score(y, y_pred, zero_division=0),
+                'recall':               recall_score(y, y_pred, zero_division=0),
+                'f1_score':             f1_score(y, y_pred, zero_division=0)
+            }
+            params.update(metrics)
+            metrics_data.append(params)
 
         scores = pd.DataFrame(metrics_data)
         scores = scores.sort_values(
@@ -357,5 +489,4 @@ class EvalHarness:
             ascending=[False, True]
         ).reset_index(drop=True)
 
-        self._visualize_scores(scores)
         return scores
