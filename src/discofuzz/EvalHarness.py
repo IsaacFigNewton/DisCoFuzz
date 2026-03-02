@@ -107,20 +107,6 @@ class EvalHarness:
 
 
     def _cosine_similarity_all_prefixes(self, a: tf.Tensor, b: tf.Tensor):
-        """
-        Computes cosine similarities between 'a' and 'b'
-        for the first n components in [1, d].
-
-        Args:
-            a: Tensor of shape (batch_size, d)
-            b: Tensor of shape (batch_size, d)
-            eps: Small constant for numerical stability
-
-        Returns:
-            Tensor of shape (batch_size, d), where:
-            output[:, n-1] = cosine similarities of all samples using first n components
-        """
-        print(a.shape)
         # Prefix dot products
         prefix_dot = tf.cumsum(a * b, axis=1)
         # Prefix norms
@@ -129,29 +115,47 @@ class EvalHarness:
         # Cosine similarity for each prefix
         cosine_sim = prefix_dot / (prefix_norm_a * prefix_norm_b)
         return cosine_sim
+    
 
-    def get_sbert_sentence_baseline(self) -> tf.Tensor:
-        cos_sims = self._cosine_similarity_all_prefixes(self.sent_embeddings[0], self.sent_embeddings[1])
+    def _cosine_similarity(self, a: tf.Tensor, b: tf.Tensor):
+        ab = tf.reduce_sum(a*b, axis=1)                     # (B,)
+        aa = tf.sqrt(tf.reduce_sum(a**2, axis=1))           # (B,)
+        bb = tf.sqrt(tf.reduce_sum(b**2, axis=1))           # (B,)
+        # Cosine similarity for each prefix
+        cosine_sim = ab / (aa * bb)                         # (B,)
+        return cosine_sim[:, None]                          # (B, 1)
+
+
+    def get_sbert_sentence_baseline(self, cum: bool) -> tf.Tensor:
+        a, b = self.sent_embeddings[0], self.sent_embeddings[1]
+        if cum:
+            cos_sims = self._cosine_similarity_all_prefixes(a, b)
+        else:
+            cos_sims = self._cosine_similarity(a, b)
         # normalize the similarities evaluated within each dim-reduced subspace
         return normalize_about_median(cos_sims, axis=0)
     
 
-    def get_sbert_token_baseline(self) -> tf.Tensor:
-        cos_sims = self._cosine_similarity_all_prefixes(self.tok_embeddings[0], self.tok_embeddings[1])
+    def get_sbert_token_baseline(self, cum: bool) -> tf.Tensor:
+        a, b = self.tok_embeddings[0], self.tok_embeddings[1]
+        if cum:
+            cos_sims = self._cosine_similarity_all_prefixes(a, b)
+        else:
+            cos_sims = self._cosine_similarity(a, b)
         # normalize the similarities evaluated within each dim-reduced subspace
         return normalize_about_median(cos_sims, axis=0)
     
 
-    def get_similarities(self, X: pd.DataFrame):
+    def get_similarities(self, X: pd.DataFrame, cum:bool=True):
         # get fuzzified baseline embeddings
         for i in [1, 2]:
             X[fmt_fuzzy_emb_col("baseline_sent", i)] = self.fuzzy_sent_embeddings[i-1]
             X[fmt_fuzzy_emb_col("baseline_tok", i)] = self.fuzzy_tok_embeddings[i-1]
 
         # get baseline embeddings' (non-fuzzy) cosine similarities
-        llm_sent_baseline_df = pd.DataFrame(self.get_sbert_sentence_baseline().numpy())
+        llm_sent_baseline_df = pd.DataFrame(self.get_sbert_sentence_baseline(cum).numpy())
         llm_sent_baseline_df.columns = get_dim_reduc_sim_cols(llm_sent_baseline_df, "baseline_sent_cos")
-        llm_tok_baseline_df = pd.DataFrame(self.get_sbert_token_baseline().numpy())
+        llm_tok_baseline_df = pd.DataFrame(self.get_sbert_token_baseline(cum).numpy())
         llm_tok_baseline_df.columns = get_dim_reduc_sim_cols(llm_tok_baseline_df, "baseline_tok_cos")
 
         # get embedding similarities across all metrics
@@ -165,6 +169,7 @@ class EvalHarness:
                         tf.convert_to_tensor(X[fmt_fuzzy_emb_col(s, 1)].tolist()),
                         tf.convert_to_tensor(X[fmt_fuzzy_emb_col(s, 2)].tolist()),
                         method=sim_metric,
+                        cum=cum
                     )
                 except Exception as e:
                     raise e
@@ -222,7 +227,7 @@ class EvalHarness:
 
         scores = pd.DataFrame(metrics_data)
         scores = scores.sort_values(
-            ['f1_score', 'similarity_metric', ],
+            ['accuracy', 'f1_score'],
             ascending=[False, True]
         ).reset_index(drop=True)
 
@@ -346,6 +351,7 @@ class EvalHarness:
                 xlabel="n_components",
                 ylabel=metric.capitalize()
             )
+            ax.set_xscale('log')
             ax.set_title(sim_metric)
             ax.grid(True)
         

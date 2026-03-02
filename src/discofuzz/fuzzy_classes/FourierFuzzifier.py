@@ -43,10 +43,13 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         a: tf.Tensor,
         b: tf.Tensor,
         method: SIMILARITY_METRICS,
+        cum: bool,
     ) -> tf.Tensor:
         """
         a, b: (batch_size, n_components, kernel_size)
-        Returns: (batch_size, n_components) where out[:, n-1] uses first n components.
+        Returns:
+          - If cum == True (default): (batch_size, n_components) where out[:, n-1] uses first n components (prefix-aggregated).
+          - If cum == False: (batch_size, 1) with similarity aggregated across ALL components.
         """
         if a is None or b is None:
             raise ValueError("Inputs must be tensors, got None")
@@ -57,66 +60,75 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
         if a.shape != b.shape:
             raise ValueError(f"Inputs must have same shape, got {a.shape} vs {b.shape}")
 
-
         match method:
             case SIMILARITY_METRICS.COS:
-                a = tf.abs(a)
-                b = tf.abs(b)
-                # numerator = aggregated spectra of convolution of a and b
-                ab = a * b
-                aa = a * a
-                bb = b * b
-                ab_components_total_power = tf.reduce_sum(ab, axis=2)  # (B, N)
-                aa_components_total_power = tf.reduce_sum(aa, axis=2)  # (B, N)
-                bb_components_total_power = tf.reduce_sum(bb, axis=2)  # (B, N)
-                
-                # Prefix aggregate across components' energies so prefix n uses first n components
-                numerator = tf.cumsum(ab_components_total_power, axis=1)                # (B, N)
-                denominator_a = tf.sqrt(tf.cumsum(aa_components_total_power, axis=1))   # (B, N)
-                denominator_b = tf.sqrt(tf.cumsum(bb_components_total_power, axis=1))   # (B, N)
-                # similarity = correllation coefficient between the two npsd's
-                similarity = numerator / (denominator_a * denominator_b + 1e-10)
-                return 1 - similarity.numpy()
-            
+                a_abs = tf.abs(a)
+                b_abs = tf.abs(b)
+                # per-component energies: (B, N)
+                ab_comp = tf.reduce_sum(a_abs * b_abs, axis=2)
+                aa_comp = tf.reduce_sum(a_abs * a_abs, axis=2)
+                bb_comp = tf.reduce_sum(b_abs * b_abs, axis=2)
+
+                if cum:
+                    # prefix-aggregate across components -> (B, N)
+                    numerator = tf.cumsum(ab_comp, axis=1)
+                    denominator_a = tf.sqrt(tf.cumsum(aa_comp, axis=1))
+                    denominator_b = tf.sqrt(tf.cumsum(bb_comp, axis=1))
+                    similarity = numerator / (denominator_a * denominator_b + 1e-10)  # (B,N)
+                    return similarity
+                else:
+                    # aggregate across components -> (B, 1)
+                    numerator = tf.reduce_sum(ab_comp, axis=1, keepdims=True)
+                    denominator_a = tf.sqrt(tf.reduce_sum(aa_comp, axis=1, keepdims=True))
+                    denominator_b = tf.sqrt(tf.reduce_sum(bb_comp, axis=1, keepdims=True))
+                    similarity = numerator / (denominator_a * denominator_b + 1e-10)  # (B,1)
+                    return similarity
+
             case SIMILARITY_METRICS.W1:
-                # Modified Wasserstein-1 earthmover's distance of probability distributions
-                #   = sum of absolute values of integrals of differences in components' CDFs
-                #   = sum of magnitudes of W1 EMDs
-                # using tf.map_fn to get cdf of each component in 2D slices of tensor (different samples)
+                # get component-wise integrals (B, N)
                 psi_batch = tf.map_fn(self._get_cdf_batch, a - b)                       # (B, N, K)
-                # integrate cdfs for each component in each sample
                 integrate_cdf_batch = tf.map_fn(self._integrate_batch, psi_batch)       # (B, N)
                 abs_diff_batch = tf.abs(integrate_cdf_batch)                            # (B, N)
-                w1_dist = tf.cumsum(abs_diff_batch, axis=1)                             # (B, N)
-                # do 1-log1p(w1) since EMD is inversely proportional to distributions' similarities
-                return 1-tf.math.log1p(w1_dist).numpy()                                 # (B, N)
-            
+
+                if cum:
+                    # prefix-sum across components -> (B, N)
+                    w1_dist = tf.cumsum(abs_diff_batch, axis=1)                         # (B,N)
+                else:
+                    # aggregated W1 across all components -> (B, 1)
+                    w1_dist = tf.reduce_sum(abs_diff_batch, axis=1, keepdims=True)      # (B,1)
+
+                return 1.0 - tf.math.log1p(w1_dist)
+
             case SIMILARITY_METRICS.W2:
-                a = tf.map_fn(self._normalize_batch, a)                                 # (B, N, K)
-                b = tf.map_fn(self._normalize_batch, b)                                 # (B, N, K)
-                # get W2 distances for each 2D slice of the batch
+                a_norm = tf.map_fn(self._normalize_batch, a)                             # (B, N, K)
+                b_norm = tf.map_fn(self._normalize_batch, b)                             # (B, N, K)
+                # component distances -> expect (B, N)
                 component_distances = tf.map_fn(
                     self._get_w2_sim_2D,
-                    (tf.abs(a), tf.abs(b)),
+                    (tf.abs(a_norm), tf.abs(b_norm)),
                     dtype=(tf.float64, tf.float64),
                     fn_output_signature=tf.float64
-                )                                                                       # (B, N)
-                aggregated_costs = tf.cumsum(component_distances, axis=1)               # (B, N)
-                return 1-tf.math.log1p(tf.abs(aggregated_costs**2))                     # (B, N)
-            
+                )                                                                        # (B, N)
+
+                if cum:
+                    w2_dist = tf.cumsum(component_distances, axis=1)                     # (B,N)
+                else:
+                    w2_dist = tf.reduce_sum(component_distances, axis=1, keepdims=True)  # (B,1)
+
+                return 1.0 - tf.math.log1p(w2_dist)
+
             case SIMILARITY_METRICS.Q:
-                # Get the PDF associated with the wave function described by psi
-                #   p(x) = integral(0, 1, |psi|^2)
-                # this metric is different from the Wasserstein-1 metric
-                #   only in that it gets the NPSDs of psi prior to integration
                 psi_batch = tf.map_fn(self._get_cdf_batch, a - b)                       # (B, N, K)
-                psi_batch_npsd = self.get_npsd_batch(psi_batch)
-                # integrate npsds of cdfs for each component in each sample
+                psi_batch_npsd = self.get_npsd_batch(psi_batch)                         # assume (B, N, K) -> npsd per component
                 p_x = tf.map_fn(self._integrate_batch, psi_batch_npsd)                  # (B, N)
                 abs_diff_batch = tf.abs(p_x)                                            # (B, N)
-                q_dist = tf.cumsum(abs_diff_batch, axis=1)                              # (B, N)
-                # do 1-log1p(q**2) since distance is inversely proportional to distributions' similarities
-                return 1-tf.math.log1p(q_dist).numpy()                                  # (B, N)
+
+                if cum:
+                    q_dist = tf.cumsum(abs_diff_batch, axis=1)                          # (B,N)
+                else:
+                    q_dist = tf.reduce_sum(abs_diff_batch, axis=1, keepdims=True)       # (B,1)
+
+                return 1.0 - q_dist
 
             case _:
                 raise ValueError(f"Unknown method: {method}")

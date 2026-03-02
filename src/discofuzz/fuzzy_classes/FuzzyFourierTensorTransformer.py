@@ -111,5 +111,5 @@ class FuzzyFourierTensorTransformer:
         # Normalize the final result
         return self.fuzzifier._normalize_batch(result)
 
-    def similarity(self, A: tf.Tensor, B: tf.Tensor, method: SIMILARITY_METRICS) -> tf.Tensor:
-        return self.fuzzifier.similarity_batch(A, B, method)
+    def similarity(self, A: tf.Tensor, B: tf.Tensor, method: SIMILARITY_METRICS, cum: bool) -> tf.Tensor:
+        return self.fuzzifier.similarity_batch(A, B, method, cum=cum)
