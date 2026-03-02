@@ -25,6 +25,7 @@ from .config import *
 from .constants import SIMILARITY_METRICS
 from .BaseEmbeddingModel import BaseEmbeddingModel
 from .fuzzy_classes.FuzzyFourierTensorTransformer import FuzzyFourierTensorTransformer
+from .EvalVisualizationsMixin import EvalVisualizationsMixin
 
 class EvalHarness:
     def __init__(self,
@@ -179,25 +180,23 @@ class EvalHarness:
 
 
     def classify_similarities(self, X: pd.DataFrame):
-        y_pred = pd.DataFrame()
-        for c in X.columns:
-            # use a simple threshold for classification
-            y_pred[f"{c}_pred"] = X[c] > 0
+        # Vectorized thresholding across the entire DataFrame
+        y_pred = X > 0
+        y_pred = y_pred.add_suffix("_pred")
         return y_pred
 
 
-    def _get_baselines(self, scores: pd.DataFrame, dimensionality: int):
-        baselines = dict()
-        for i, row in scores.iterrows():
-            if not row["fuzzy"] and row["n_components"] == dimensionality-1:
-                # print(row)
-                baselines[row['model']] = {
-                    'accuracy': row['accuracy'] if len(row) > 0 else None,
-                    'precision': row['precision'] if len(row) > 0 else None,
-                    'recall': row['recall'] if len(row) > 0 else None,
-                    'f1_score': row['f1_score'] if len(row) > 0 else None
-                }
-        return baselines
+    def _get_baselines(self, scores: pd.DataFrame, dimensionality: int) -> dict:
+        # mask for baseline rows
+        score_cols = ["accuracy", "precision", "recall", "f1_score"]
+        mask = (~scores["fuzzy"]) & (scores["n_components"] == (dimensionality - 1))
+        baselines_df = scores.loc[mask, ["model"]+score_cols].copy()
+        # ensure missing values become None (instead of NaN) in the final dict
+        baselines_df = baselines_df.where(pd.notna(baselines_df), None)
+        # convert to dict keyed by model
+        return baselines_df\
+            .set_index("model")[score_cols]\
+            .to_dict(orient="index")
 
 
     def score(self,
@@ -231,94 +230,206 @@ class EvalHarness:
 
 
     def visualize_similarities(self, X: pd.DataFrame, dimensionality: int):
-        # --- Grid layout (2 columns, as many rows as needed) ---
         n = len(self.sim_metrics)
-        ncols = 2
-        nrows = int(np.ceil(n / ncols))
-
-        fig, axes = plt.subplots(
-            nrows,
-            ncols,
-            figsize=(5 * ncols, 4 * nrows),
-            sharey=True
-        )
-        axes = np.atleast_2d(axes)  # always 2D for consistent indexing
-        axes_flat = axes.flatten()
+        fig, axes, axes_flat, nrows, ncols = EvalVisualizationsMixin._make_grid(n, ncols=2, w=5, h=4, sharey=True)
 
         baseline_col = fmt_dim_reduc_sim_col("baseline_sent_cos", dimensionality - 1)
+
+        # Collect legend items across subplots (so we can do one legend below)
+        all_handles, all_labels = [], []
+        seen = set()
 
         for metric_idx, sim_metric in enumerate(self.sim_metrics):
             ax = axes_flat[metric_idx]
 
-            # Get columns for this metric
             metric_cols = [
-                col
-                for col in X.columns
-                if (
-                    "fuzzy_" in col
-                    and sim_metric.value in col
-                    and str(dimensionality - 1) in col
-                )
+                col for col in X.columns
+                if ("fuzzy_" in col and sim_metric.value in col and str(dimensionality - 1) in col)
             ]
 
-            cmap = plt.get_cmap("viridis")
-            colors = cmap(np.linspace(0, 1, len(metric_cols))) if len(metric_cols) else []
+            colors = EvalVisualizationsMixin._colormap_list(len(metric_cols), "viridis")
 
-            handles, labels = [], []
             for i, col in enumerate(metric_cols):
-                label = col.replace("fuzzy_", "").replace(
-                    f"_{sim_metric.value}_sim_components={dimensionality - 1}", ""
+                label = (
+                    col.replace("fuzzy_", "")
+                       .replace(f"_{sim_metric.value}_sim_components={dimensionality - 1}", "")
                 )
-                labels.append(label)
-                handles.append(ax.scatter(
+                h = ax.scatter(
                     x=X[baseline_col],
                     y=X[col],
                     color=colors[i],
                     label=label,
                     alpha=0.6
-                ))
+                )
+                if label not in seen:
+                    seen.add(label)
+                    all_handles.append(h)
+                    all_labels.append(label)
 
-
-            # Only show y-axis labels/ticks for the leftmost column
-            col_pos = metric_idx % ncols
-            row_pos = metric_idx > 1
-            if col_pos == 0:
-                ax.set_ylabel("fuzzy compositional similarity", fontsize=12)
-            else:
-                ax.tick_params(axis="y", left=False, labelleft=False)
-                ax.set_ylabel("")
-            # only show x-axis labels/ticks for bottom row
-            if row_pos:
-                ax.set_xlabel("sentence embedding cosine similarity", fontsize=12)
-            else:
-                ax.tick_params(axis="x", bottom=False, labelbottom=False)
-                ax.set_xlabel("")
-
-            ax.set_title(
-                f"Sentence Embedding vs. {sim_metric.value}",
-                fontsize=14
+            EvalVisualizationsMixin._show_axis_labels(
+                ax, metric_idx, nrows, ncols,
+                xlabel="sentence embedding cosine similarity",
+                ylabel="fuzzy compositional similarity",
+                show_left_y_only=True,
+                show_bottom_x_only=True
             )
+
+            ax.set_title(f"Sentence Embedding vs. {sim_metric.value}", fontsize=14)
             ax.grid(alpha=0.3)
 
-        # Hide any unused subplots (when n is not a multiple of ncols)
-        for j in range(n, len(axes_flat)):
-            axes_flat[j].set_visible(False)
+        EvalVisualizationsMixin._hide_unused_axes(axes_flat, n)
+        EvalVisualizationsMixin._legend_below(fig, all_handles, all_labels, y=-0.02, ncol_cap=5, fontsize=9)
+        EvalVisualizationsMixin._finish(fig, bottom_space=0.08, top_space=1.0)
 
-        # --- Place legend centered below all plots ---
-        fig.legend(
-            handles,
-            labels,
-            loc="lower center",
-            bbox_to_anchor=(0.5, -0.02),
-            ncol=min(len(labels), 5),
-            fontsize=9
+
+    def visualize_metric_by_sim_n_components(self, df: pd.DataFrame, strategies=None, metric: str = "f1_score"):
+        required = {'strategy', 'similarity_metric', 'n_components', metric, 'fuzzy'}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+        baseline_strats = ['baseline_sent', 'baseline_tok']
+        base = df[
+            (~df['fuzzy']) &
+            (df['similarity_metric'] == 'cos') &
+            (df['strategy'].isin(baseline_strats))
+        ].copy()
+
+        base_grouped = (
+            base.groupby(['strategy', 'n_components'], as_index=False)
+                .agg({metric: 'mean'})
+                .sort_values(['strategy', 'n_components'])
         )
 
-        # Leave space for bottom legend
-        plt.tight_layout(rect=[0, 0.08, 1, 1])
-        plt.show()
-    
+        dmain = df if strategies is None else df[df['strategy'].isin(strategies)]
+        dmain_grouped = (
+            dmain.groupby(['similarity_metric', 'strategy', 'n_components'], as_index=False)
+                .agg({metric: 'mean'})
+                .sort_values(['similarity_metric', 'strategy', 'n_components'])
+        )
 
+        sim_metrics = sorted(dmain_grouped['similarity_metric'].unique())
+        if len(sim_metrics) != 4:
+            print(f"Warning: Found {len(sim_metrics)} similarity metrics (expected 4).")
+
+        fig, axes, axes_flat, nrows, ncols = EvalVisualizationsMixin._make_grid(4, ncols=2, w=4, h=3, sharex=True, sharey=True)
+
+        for idx, sim_metric in enumerate(sim_metrics[:4]):
+            ax = axes_flat[idx]
+            metric_data = dmain_grouped[dmain_grouped['similarity_metric'] == sim_metric]
+
+            for strategy_name, group in metric_data.groupby('strategy'):
+                ax.plot(
+                    group['n_components'],
+                    group[metric],
+                    label=strategy_name
+                )
+
+            if not base_grouped.empty:
+                for bname, bgrp in base_grouped.groupby('strategy'):
+                    ax.plot(
+                        bgrp['n_components'],
+                        bgrp[metric],
+                        linestyle='--',
+                        label=f"{bname} (non-fuzzy, cos)"
+                    )
+
+            EvalVisualizationsMixin._show_axis_labels(
+                ax, idx, nrows, ncols,
+                xlabel="n_components",
+                ylabel="F1 Score"
+            )
+            ax.set_title(sim_metric)
+            ax.grid(True)
+
+        # Single legend below (unique entries)
+        handles, labels = EvalVisualizationsMixin._unique_legend_from_axes(axes_flat[:len(sim_metrics[:4])])
+        EvalVisualizationsMixin._legend_below(fig, handles, labels, y=-0.02, ncol_cap=3, fontsize=9)
+        EvalVisualizationsMixin._finish(fig, bottom_space=0.08, top_space=1.0)
+
+
+    def visualize_scores(self, scores: pd.DataFrame, dimensionality: int, only_acc_f1: bool = True):
+        metric_names = ['accuracy', 'f1_score'] if only_acc_f1 else ['accuracy', 'precision', 'recall', 'f1_score']
+        n = len(metric_names)
+
+        ncols = 2
+        fig, axes, axes_flat, nrows, ncols = EvalVisualizationsMixin._make_grid(
+            n, ncols=ncols,
+            w=6 if only_acc_f1 else 10,
+            h=6 if only_acc_f1 else 8,
+            sharey=True
+        )
+        fig.suptitle('Evaluation Metrics by Strategy and Similarity Metric', fontsize=18, y=0.98)
+
+        baselines = self._get_baselines(scores, dimensionality)
+
+        cmap = plt.cm.viridis
+        sim_metric_colors = {
+            sim_metric: cmap(i / max(len(self.sim_metrics) - 1, 1))
+            for i, sim_metric in enumerate(self.sim_metrics)
+        }
+
+        bar_width = 0.25
+        x_pos = np.arange(len(self.composition_strategies))
+
+        for idx, metric in enumerate(metric_names):
+            ax = axes_flat[idx]
+
+            # Bars
+            for i, sim_metric in enumerate(self.sim_metrics):
+                strat_vals = []
+                for s in self.composition_strategies:
+                    m = (
+                        (scores['strategy'] == s) &
+                        (scores['similarity_metric'] == sim_metric.value) &
+                        (scores['n_components'] == dimensionality - 1)
+                    )
+                    strat_vals.append(float(scores.loc[m, metric].iloc[0]))
+
+                offset = (i - len(self.sim_metrics) / 2 + 0.5) * bar_width
+                ax.barh(
+                    x_pos + offset,
+                    strat_vals,
+                    bar_width,
+                    label=sim_metric.value,
+                    color=sim_metric_colors[sim_metric],
+                    alpha=0.8
+                )
+
+            # Baselines
+            for i, (label, values) in enumerate(baselines.items()):
+                v = values.get(metric)
+                if v is None:
+                    continue
+                color = tuple(0.7 * c for c in cmap(i / max(len(baselines) - 1, 1)))
+                ax.axvline(
+                    x=v, color=color,
+                    linestyle=':', linewidth=2,
+                    label=label, alpha=0.8, zorder=0
+                )
+
+            ax.set_yticks(x_pos)
+
+            # y tick labels only on left column (shared helper)
+            EvalVisualizationsMixin._show_axis_labels(
+                ax, idx, nrows, ncols,
+                xlabel=metric.capitalize(),
+                ylabel="Strategy"
+            )
+
+            if (idx % ncols) == 0:
+                ax.set_yticklabels([s.replace('_', ' ') for s in self.composition_strategies], fontsize=9)
+
+            ax.set_xlim(0, 1.0)
+            ax.grid(axis='x', alpha=0.3)
+
+        handles, labels = EvalVisualizationsMixin._unique_legend_from_axes(axes_flat[:n])
+        EvalVisualizationsMixin._legend_below(fig, handles, labels, y=-0.02, ncol_cap=3, fontsize=10)
+
+        bottom_space = 0.12 if only_acc_f1 else 0.08
+        EvalVisualizationsMixin._finish(fig, bottom_space=bottom_space, top_space=0.95)
+    
+    
     def plot_confusion_matrices(self,
             X: pd.DataFrame,
             y: pd.Series,
@@ -363,238 +474,3 @@ class EvalHarness:
 
             plt.tight_layout()
             plt.show()
-
-
-    def visualize_metric_by_sim_n_components(self, df: pd.DataFrame, strategies=None, metric:str = "f1_score"):
-        """
-        Creates 4 subplots (one per similarity_metric) plotting
-        F1 score vs n_components for each strategy, and adds the non-fuzzy
-        baseline_sent/baseline_tok cosine results to EVERY subplot.
-
-        Parameters
-        ----------
-        df : pandas.DataFrame
-            Must contain columns:
-            ['strategy', 'similarity_metric', 'n_components', metric, 'fuzzy']
-
-        strategies : list or None
-            List of strategies to include (excluding the added baselines).
-            If None, all strategies are used.
-        """
-        required_cols = {'strategy', 'similarity_metric', 'n_components', metric, 'fuzzy'}
-        missing = required_cols - set(df.columns)
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
-
-        # --- Pull non-fuzzy cosine baselines (baseline_sent, baseline_tok) ---
-        baseline_strats = ['baseline_sent', 'baseline_tok']
-        base = df[
-            (df['fuzzy'] == False) &
-            (df['similarity_metric'] == 'cos') &
-            (df['strategy'].isin(baseline_strats))
-        ].copy()
-
-        base_grouped = (
-            base.groupby(['strategy', 'n_components'], as_index=False)
-                .agg({metric: 'mean'})
-                .sort_values(['strategy', 'n_components'])
-        )
-
-        # --- Main data (optionally filtered by strategies) ---
-        dmain = df.copy()
-        if strategies is not None:
-            dmain = dmain[dmain['strategy'].isin(strategies)]
-
-        dmain_grouped = (
-            dmain.groupby(['similarity_metric', 'strategy', 'n_components'], as_index=False)
-                .agg({metric: 'mean'})
-                .sort_values(['similarity_metric', 'strategy', 'n_components'])
-        )
-
-        metrics = sorted(dmain_grouped['similarity_metric'].unique())
-        if len(metrics) != 4:
-            print(f"Warning: Found {len(metrics)} similarity metrics (expected 4).")
-
-        fig, axes = plt.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
-        axes = axes.flatten()
-
-        for idx, (ax, sim_metric) in enumerate(zip(axes, metrics)):
-            metric_data = dmain_grouped[dmain_grouped['similarity_metric'] == sim_metric]
-
-            # Plot requested strategies for this metric
-            for strategy_name, group in metric_data.groupby('strategy'):
-                ax.plot(group['n_components'], group[metric], marker='o', label=strategy_name)
-
-            # Add the non-fuzzy cosine baselines to every subplot
-            if not base_grouped.empty:
-                for bname, bgrp in base_grouped.groupby('strategy'):
-                    ax.plot(
-                        bgrp['n_components'],
-                        bgrp[metric],
-                        marker='o',
-                        linestyle='--',
-                        label=f"{bname} (non-fuzzy, cos)"
-                    )
-            else:
-                # If missing, still keep plots working
-                pass
-
-            # Show y-axis only for leftmost column
-            col_position = idx % 2
-            if col_position == 0:
-                ax.set_ylabel("F1 Score")
-            else:
-                ax.tick_params(axis='y', left=False, labelleft=False)
-                ax.set_ylabel('')
-            
-            ax.set_title(metric)
-            ax.set_xlabel("n_components")
-            ax.grid(True)
-
-        # Single legend underneath (collect from all axes to ensure baselines appear)
-        handles, labels = [], []
-        for ax in axes[:len(metrics)]:
-            h, l = ax.get_legend_handles_labels()
-            for hh, ll in zip(h, l):
-                if ll not in labels:
-                    handles.append(hh)
-                    labels.append(ll)
-
-        # Place legend centered below the plots
-        fig.legend(
-            handles,
-            labels,
-            loc='lower center',
-            bbox_to_anchor=(0.5, -0.02),
-            ncol=min(len(labels), 3)  # spread legend horizontally
-        )
-
-        # Leave space at bottom for legend
-        plt.tight_layout(rect=[0, 0.08, 1, 1])
-        plt.show()
-        
-
-    def visualize_scores(self, scores: pd.DataFrame, dimensionality: int, only_acc_f1: bool = True):
-        """
-        Visualize evaluation metrics.
-
-        Parameters
-        ----------
-        scores : pd.DataFrame
-        dimensionality : int
-        only_acc_f1 : bool
-            If True, only accuracy and f1_score are shown.
-            If False (default), accuracy, precision, recall and f1_score are shown.
-        """
-
-        # --- Select metrics ---
-        if only_acc_f1:
-            metric_names = ['accuracy', 'f1_score']
-            fig, axes = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
-            axes = np.array(axes).reshape(1, 2)
-        else:
-            metric_names = ['accuracy', 'precision', 'recall', 'f1_score']
-            fig, axes = plt.subplots(2, 2, figsize=(20, 16), sharey=True)
-
-        fig.suptitle(
-            'Evaluation Metrics by Strategy and Similarity Metric',
-            fontsize=18,
-            y=0.98
-        )
-
-        baselines = self._get_baselines(scores, dimensionality)
-
-        cmap = plt.cm.viridis
-        sim_metric_colors = {
-            sim_metric: cmap(i / max(len(self.sim_metrics) - 1, 1))
-            for i, sim_metric in enumerate(self.sim_metrics)
-        }
-
-        axes_flat = axes.flatten()
-
-        for idx, metric in enumerate(metric_names):
-            ax = axes_flat[idx]
-
-            bar_width = 0.25
-            x_pos = np.arange(len(self.composition_strategies))
-
-            # --- Bars ---
-            for i, sim_metric in enumerate(self.sim_metrics):
-                values = []
-                for s in self.composition_strategies:
-                    strat_mask = (
-                        (scores['strategy'] == s) &
-                        (scores['similarity_metric'] == sim_metric.value) &
-                        (scores['n_components'] == dimensionality-1)
-                    )
-                    metric_value = float(scores[strat_mask][metric].iloc[0])
-                    values.append(metric_value)
-
-                offset = (i - len(self.sim_metrics)/2 + 0.5) * bar_width
-
-                ax.barh(
-                    x_pos + offset,
-                    values,
-                    bar_width,
-                    label=sim_metric.value,
-                    color=sim_metric_colors[sim_metric],
-                    alpha=0.8
-                )
-
-            # --- Baselines ---
-            for i, (label, values) in enumerate(baselines.items()):
-                color = cmap(i / max(len(baselines) - 1, 1))
-                color = tuple([0.7 * v for v in color])
-                if values[metric] is not None:
-                    ax.axvline(
-                        x=values[metric],
-                        color=color,
-                        linestyle=':',
-                        linewidth=2,
-                        label=label,
-                        alpha=0.8,
-                        zorder=0
-                    )
-
-            ax.set_yticks(x_pos)
-
-            # Show y-axis only for leftmost column
-            ncols = axes.shape[1]
-            col_position = idx % ncols
-
-            if col_position == 0:
-                ax.set_yticklabels(
-                    [s.replace('_', ' ') for s in self.composition_strategies],
-                    fontsize=9
-                )
-                ax.set_ylabel('Strategy', fontsize=12)
-            else:
-                ax.tick_params(axis='y', left=False, labelleft=False)
-                ax.set_ylabel('')
-
-            ax.set_xlabel(metric.capitalize(), fontsize=12)
-            ax.set_xlim(0, 1.0)
-            ax.grid(axis='x', alpha=0.3)
-
-        # --- Shared legend underneath ---
-        handles, labels = [], []
-        for ax in axes_flat[:len(metric_names)]:
-            h, l = ax.get_legend_handles_labels()
-            for hh, ll in zip(h, l):
-                if ll not in labels:
-                    handles.append(hh)
-                    labels.append(ll)
-
-        fig.legend(
-            handles,
-            labels,
-            loc='lower center',
-            bbox_to_anchor=(0.5, -0.02),
-            ncol=min(len(labels), 3),
-            fontsize=10
-        )
-
-        bottom_space = 0.12 if only_acc_f1 else 0.08
-        plt.tight_layout(rect=[0, bottom_space, 1, 0.95])
-
-        plt.show()

@@ -6,6 +6,8 @@ from .fuzzy_classes import (
     FuzzyFourierTensorTransformer,
 )
 from .Visualizer import Visualizer
+from .EvalHarness import EvalHarness
+from .EvalVisualizationsMixin import EvalVisualizationsMixin
 
 __all__ = [
     "TensorStore",
@@ -13,6 +15,8 @@ __all__ = [
     "FourierFuzzifier",
     "FuzzyFourierSetMixin",
     "FuzzyFourierTensorTransformer",
-
+    
+    "EvalHarness",
     "Visualizer",
+    "EvalVisualizationsMixin"
 ]
