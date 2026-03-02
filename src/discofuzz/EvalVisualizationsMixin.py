@@ -5,7 +5,10 @@ import matplotlib.pyplot as plt
 class EvalVisualizationsMixin:
     @staticmethod
     def _make_grid(n_items: int, ncols: int = 2, w: float = 5, h: float = 4, **kwargs):
-        nrows = int(np.ceil(n_items / ncols)) if n_items else 1
+        n_items = int(max(n_items, 1))
+        ncols = int(min(max(ncols, 1), n_items))
+        nrows = int(np.ceil(n_items / ncols))
+
         fig, axes = plt.subplots(nrows, ncols, figsize=(w * ncols, h * nrows), **kwargs)
         axes = np.atleast_2d(axes).reshape(nrows, ncols)
         return fig, axes, axes.ravel(), nrows, ncols
@@ -51,19 +54,22 @@ class EvalVisualizationsMixin:
         return handles, labels
 
     @staticmethod
-    def _legend_below(fig, handles, labels, y: float = -0.02, ncol_cap: int = 5, fontsize: int = 9):
-        if handles:
-            fig.legend(
-                handles, labels,
-                loc="lower center",
-                bbox_to_anchor=(0.5, y),
-                ncol=min(len(labels), ncol_cap),
-                fontsize=fontsize
-            )
-
+    def _legend_below(fig, handles, labels,
+                    ncol_cap: int = 5,
+                    fontsize: int = 10):
+        fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.2),  # outside the figure
+            ncol=min(len(labels), ncol_cap),
+            fontsize=fontsize
+        )
+    
     @staticmethod
-    def _finish(fig, bottom_space: float = 0.08, top_space: float = 1.0):
-        plt.tight_layout(rect=[0, bottom_space, 1, top_space])
+    def _finish(fig, bottom_space: float = 0.25, top_space: float = 0.85):
+        fig.subplots_adjust(bottom=bottom_space, top=top_space)
+        plt.tight_layout()
         plt.show()
 
     @staticmethod

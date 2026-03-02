@@ -236,7 +236,7 @@ class EvalHarness:
         baseline_col = fmt_dim_reduc_sim_col("baseline_sent_cos", dimensionality - 1)
 
         # Collect legend items across subplots (so we can do one legend below)
-        all_handles, all_labels = [], []
+        handles, labels = [], []
         seen = set()
 
         for metric_idx, sim_metric in enumerate(self.sim_metrics):
@@ -263,8 +263,8 @@ class EvalHarness:
                 )
                 if label not in seen:
                     seen.add(label)
-                    all_handles.append(h)
-                    all_labels.append(label)
+                    handles.append(h)
+                    labels.append(label)
 
             EvalVisualizationsMixin._show_axis_labels(
                 ax, metric_idx, nrows, ncols,
@@ -278,8 +278,8 @@ class EvalHarness:
             ax.grid(alpha=0.3)
 
         EvalVisualizationsMixin._hide_unused_axes(axes_flat, n)
-        EvalVisualizationsMixin._legend_below(fig, all_handles, all_labels, y=-0.02, ncol_cap=5, fontsize=9)
-        EvalVisualizationsMixin._finish(fig, bottom_space=0.08, top_space=1.0)
+        EvalVisualizationsMixin._legend_below(fig, handles, labels, ncol_cap=3)
+        EvalVisualizationsMixin._finish(fig)
 
 
     def visualize_metric_by_sim_n_components(self, df: pd.DataFrame, strategies=None, metric: str = "f1_score"):
@@ -309,12 +309,19 @@ class EvalHarness:
         )
 
         sim_metrics = sorted(dmain_grouped['similarity_metric'].unique())
-        if len(sim_metrics) != 4:
-            print(f"Warning: Found {len(sim_metrics)} similarity metrics (expected 4).")
+        n = len(sim_metrics)
+        if n == 0:
+            print("No similarity metrics to plot.")
+            return
 
-        fig, axes, axes_flat, nrows, ncols = EvalVisualizationsMixin._make_grid(4, ncols=2, w=4, h=3, sharex=True, sharey=True)
+        fig, axes, axes_flat, nrows, ncols = EvalVisualizationsMixin._make_grid(
+            n_items=n,
+            ncols=2,          # keeps the 2-col layout like visualize_similarities
+            w=4, h=3,         # per-subplot sizing; figure auto-scales
+            sharex=True, sharey=True
+        )
 
-        for idx, sim_metric in enumerate(sim_metrics[:4]):
+        for idx, sim_metric in enumerate(sim_metrics):
             ax = axes_flat[idx]
             metric_data = dmain_grouped[dmain_grouped['similarity_metric'] == sim_metric]
 
@@ -333,19 +340,20 @@ class EvalHarness:
                         linestyle='--',
                         label=f"{bname} (non-fuzzy, cos)"
                     )
-
+            
             EvalVisualizationsMixin._show_axis_labels(
                 ax, idx, nrows, ncols,
                 xlabel="n_components",
-                ylabel="F1 Score"
+                ylabel=metric.capitalize()
             )
             ax.set_title(sim_metric)
             ax.grid(True)
-
-        # Single legend below (unique entries)
-        handles, labels = EvalVisualizationsMixin._unique_legend_from_axes(axes_flat[:len(sim_metrics[:4])])
-        EvalVisualizationsMixin._legend_below(fig, handles, labels, y=-0.02, ncol_cap=3, fontsize=9)
-        EvalVisualizationsMixin._finish(fig, bottom_space=0.08, top_space=1.0)
+        
+        # If grid had extra slots, hide them (e.g., n=3 with ncols=2 gives 4 slots)
+        EvalVisualizationsMixin._hide_unused_axes(axes_flat, n)
+        handles, labels = EvalVisualizationsMixin._unique_legend_from_axes(axes_flat[:n])
+        EvalVisualizationsMixin._legend_below(fig, handles, labels, ncol_cap=3)
+        EvalVisualizationsMixin._finish(fig)
 
 
     def visualize_scores(self, scores: pd.DataFrame, dimensionality: int, only_acc_f1: bool = True):
@@ -418,16 +426,14 @@ class EvalHarness:
             )
 
             if (idx % ncols) == 0:
-                ax.set_yticklabels([s.replace('_', ' ') for s in self.composition_strategies], fontsize=9)
+                ax.set_yticklabels([s.replace('_', ' ') for s in self.composition_strategies])
 
             ax.set_xlim(0, 1.0)
             ax.grid(axis='x', alpha=0.3)
 
         handles, labels = EvalVisualizationsMixin._unique_legend_from_axes(axes_flat[:n])
-        EvalVisualizationsMixin._legend_below(fig, handles, labels, y=-0.02, ncol_cap=3, fontsize=10)
-
-        bottom_space = 0.12 if only_acc_f1 else 0.08
-        EvalVisualizationsMixin._finish(fig, bottom_space=bottom_space, top_space=0.95)
+        EvalVisualizationsMixin._legend_below(fig, handles, labels, ncol_cap=3)
+        EvalVisualizationsMixin._finish(fig)
     
     
     def plot_confusion_matrices(self,
