@@ -60,6 +60,8 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
 
         match method:
             case SIMILARITY_METRICS.COS:
+                a = tf.abs(a)
+                b = tf.abs(b)
                 # numerator = aggregated spectra of convolution of a and b
                 ab = a * b
                 aa = a * a
@@ -74,7 +76,7 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 denominator_b = tf.sqrt(tf.cumsum(bb_components_total_power, axis=1))   # (B, N)
                 # similarity = correllation coefficient between the two npsd's
                 similarity = numerator / (denominator_a * denominator_b + 1e-10)
-                return 1 - tf.abs(similarity).numpy()
+                return 1 - similarity.numpy()
             
             case SIMILARITY_METRICS.W1:
                 # Modified Wasserstein-1 earthmover's distance of probability distributions
@@ -85,9 +87,9 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                 # integrate cdfs for each component in each sample
                 integrate_cdf_batch = tf.map_fn(self._integrate_batch, psi_batch)       # (B, N)
                 abs_diff_batch = tf.abs(integrate_cdf_batch)                            # (B, N)
-                w1_dist = tf.cumsum(abs_diff_batch).numpy()                             # (B, N)
+                w1_dist = tf.cumsum(abs_diff_batch, axis=1)                             # (B, N)
                 # do 1-log1p(w1) since EMD is inversely proportional to distributions' similarities
-                return 1-np.log1p(w1_dist)
+                return 1-tf.math.log1p(w1_dist).numpy()                                 # (B, N)
             
             case SIMILARITY_METRICS.W2:
                 a = tf.map_fn(self._normalize_batch, a)                                 # (B, N, K)
@@ -100,19 +102,21 @@ class FourierFuzzifier(FuzzyFourierSetMixin):
                     fn_output_signature=tf.float64
                 )                                                                       # (B, N)
                 aggregated_costs = tf.cumsum(component_distances, axis=1)               # (B, N)
-                return 1-tf.abs(aggregated_costs**2)                                    # (B, N)
+                return 1-tf.math.log1p(tf.abs(aggregated_costs**2))                     # (B, N)
             
             case SIMILARITY_METRICS.Q:
-                psi_batch = tf.map_fn(self._get_cdf_batch, a - b)                       # (B, N, K)
                 # Get the PDF associated with the wave function described by psi
                 #   p(x) = integral(0, 1, |psi|^2)
                 # this metric is different from the Wasserstein-1 metric
-                #   only in that it squares psi prior to integration
+                #   only in that it gets the NPSDs of psi prior to integration
+                psi_batch = tf.map_fn(self._get_cdf_batch, a - b)                       # (B, N, K)
                 psi_batch_npsd = self.get_npsd_batch(psi_batch)
+                # integrate npsds of cdfs for each component in each sample
                 p_x = tf.map_fn(self._integrate_batch, psi_batch_npsd)                  # (B, N)
-                
-                # do 1-log1p(w1**2) since distance is inversely proportional to distributions' similarities
-                return 1-tf.cumsum(tf.abs(p_x), axis=1).numpy()                                 # (B, N)
+                abs_diff_batch = tf.abs(p_x)                                            # (B, N)
+                q_dist = tf.cumsum(abs_diff_batch, axis=1)                              # (B, N)
+                # do 1-log1p(q**2) since distance is inversely proportional to distributions' similarities
+                return 1-tf.math.log1p(q_dist).numpy()                                  # (B, N)
 
             case _:
                 raise ValueError(f"Unknown method: {method}")

@@ -186,10 +186,10 @@ class EvalHarness:
         return y_pred
 
 
-    def _get_baselines(self, scores: pd.DataFrame):
+    def _get_baselines(self, scores: pd.DataFrame, dimensionality: int):
         baselines = dict()
         for i, row in scores.iterrows():
-            if not row["fuzzy"]:
+            if not row["fuzzy"] and row["n_components"] == dimensionality-1:
                 # print(row)
                 baselines[row['model']] = {
                     'accuracy': row['accuracy'] if len(row) > 0 else None,
@@ -365,7 +365,7 @@ class EvalHarness:
             plt.show()
 
 
-    def visualize_f1_by_metric_n_components(self, df: pd.DataFrame, strategies=None):
+    def visualize_metric_by_sim_n_components(self, df: pd.DataFrame, strategies=None, metric:str = "f1_score"):
         """
         Creates 4 subplots (one per similarity_metric) plotting
         F1 score vs n_components for each strategy, and adds the non-fuzzy
@@ -375,13 +375,13 @@ class EvalHarness:
         ----------
         df : pandas.DataFrame
             Must contain columns:
-            ['strategy', 'similarity_metric', 'n_components', 'f1_score', 'fuzzy']
+            ['strategy', 'similarity_metric', 'n_components', metric, 'fuzzy']
 
         strategies : list or None
             List of strategies to include (excluding the added baselines).
             If None, all strategies are used.
         """
-        required_cols = {'strategy', 'similarity_metric', 'n_components', 'f1_score', 'fuzzy'}
+        required_cols = {'strategy', 'similarity_metric', 'n_components', metric, 'fuzzy'}
         missing = required_cols - set(df.columns)
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
@@ -396,7 +396,7 @@ class EvalHarness:
 
         base_grouped = (
             base.groupby(['strategy', 'n_components'], as_index=False)
-                .agg({'f1_score': 'mean'})
+                .agg({metric: 'mean'})
                 .sort_values(['strategy', 'n_components'])
         )
 
@@ -407,7 +407,7 @@ class EvalHarness:
 
         dmain_grouped = (
             dmain.groupby(['similarity_metric', 'strategy', 'n_components'], as_index=False)
-                .agg({'f1_score': 'mean'})
+                .agg({metric: 'mean'})
                 .sort_values(['similarity_metric', 'strategy', 'n_components'])
         )
 
@@ -418,19 +418,19 @@ class EvalHarness:
         fig, axes = plt.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
         axes = axes.flatten()
 
-        for idx, (ax, metric) in enumerate(zip(axes, metrics)):
-            metric_data = dmain_grouped[dmain_grouped['similarity_metric'] == metric]
+        for idx, (ax, sim_metric) in enumerate(zip(axes, metrics)):
+            metric_data = dmain_grouped[dmain_grouped['similarity_metric'] == sim_metric]
 
             # Plot requested strategies for this metric
             for strategy_name, group in metric_data.groupby('strategy'):
-                ax.plot(group['n_components'], group['f1_score'], marker='o', label=strategy_name)
+                ax.plot(group['n_components'], group[metric], marker='o', label=strategy_name)
 
             # Add the non-fuzzy cosine baselines to every subplot
             if not base_grouped.empty:
                 for bname, bgrp in base_grouped.groupby('strategy'):
                     ax.plot(
                         bgrp['n_components'],
-                        bgrp['f1_score'],
+                        bgrp[metric],
                         marker='o',
                         linestyle='--',
                         label=f"{bname} (non-fuzzy, cos)"
@@ -502,7 +502,7 @@ class EvalHarness:
             y=0.98
         )
 
-        baselines = self._get_baselines(scores)
+        baselines = self._get_baselines(scores, dimensionality)
 
         cmap = plt.cm.viridis
         sim_metric_colors = {
@@ -524,7 +524,8 @@ class EvalHarness:
                 for s in self.composition_strategies:
                     strat_mask = (
                         (scores['strategy'] == s) &
-                        (scores['similarity_metric'] == sim_metric.value)
+                        (scores['similarity_metric'] == sim_metric.value) &
+                        (scores['n_components'] == dimensionality-1)
                     )
                     metric_value = float(scores[strat_mask][metric].iloc[0])
                     values.append(metric_value)
